@@ -276,7 +276,7 @@ ENV FBC_VERSIONS \
       1.07.1
 RUN set -xe && \
     for VERSION in $FBC_VERSIONS; do \
-      curl -fSsL "https://downloads.sourceforge.net/project/fbc/Binaries%20-%20Linux/FreeBASIC-$VERSION-linux-x86_64.tar.gz" -o /tmp/fbc-$VERSION.tar.gz && \
+      curl -fSsL "https://sourceforge.net/projects/fbc/files/Older%20versions/$VERSION/FreeBASIC-$VERSION-linux-x86_64.tar.gz/download" -o /tmp/fbc-$VERSION.tar.gz && \
       mkdir /usr/local/fbc-$VERSION && \
       tar -xf /tmp/fbc-$VERSION.tar.gz -C /usr/local/fbc-$VERSION --strip-components=1 && \
       rm -rf /tmp/*; \
