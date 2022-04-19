@@ -52,7 +52,6 @@ RUN set -xe && \
 
 # Check for latest version here: https://www.python.org/downloads
 ENV PYTHON_VERSIONS \
-      3.10.4 \
       3.8.1 \
       2.7.17
 RUN set -xe && \
@@ -68,29 +67,6 @@ RUN set -xe && \
       make -j$(nproc) install && \
       rm -rf /tmp/*; \
     done
-
-# Python for ML
-RUN apt-get update && \
-    /usr/local/python-3.10.4/bin/pip3 install \
-        mlxtend \
-        numpy \
-        pandas \
-        scikit-learn \
-        pytest \
-        scipy \
-        matplotlib \
-        gspread \
-        pydrive \
-        keras \
-        scrapy \
-        nltk \
-        bs4 \
-        seaborn \
-        xgboost \
-        opencv-python \
-        Pillow \
-        tensorflow && \
-    rm -rf /var/lib/apt/lists/*
 
 # Check for latest version here: https://ftp.gnu.org/gnu/octave
 ENV OCTAVE_VERSIONS \
@@ -276,7 +252,7 @@ ENV FBC_VERSIONS \
       1.07.1
 RUN set -xe && \
     for VERSION in $FBC_VERSIONS; do \
-      curl -fSsL "https://sourceforge.net/projects/fbc/files/Older%20versions/$VERSION/FreeBASIC-$VERSION-linux-x86_64.tar.gz/download" -o /tmp/fbc-$VERSION.tar.gz && \
+      curl -fSsL "https://downloads.sourceforge.net/project/fbc/Binaries%20-%20Linux/FreeBASIC-$VERSION-linux-x86_64.tar.gz" -o /tmp/fbc-$VERSION.tar.gz && \
       mkdir /usr/local/fbc-$VERSION && \
       tar -xf /tmp/fbc-$VERSION.tar.gz -C /usr/local/fbc-$VERSION --strip-components=1 && \
       rm -rf /tmp/*; \
