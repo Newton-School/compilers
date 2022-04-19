@@ -2,11 +2,11 @@ FROM judge0/compilers:1.4.0
 
 
 # Check for latest version here: https://www.python.org/downloads
-ENV PYTHON_VERSIONS \
+ENV PYTHON_FOR_ML_VERSIONS \
       3.10.4
 
 RUN set -xe && \
-    for VERSION in $PYTHON_VERSIONS; do \
+    for VERSION in $PYTHON_FOR_ML_VERSIONS; do \
       curl -fSsL "https://www.python.org/ftp/python/$VERSION/Python-$VERSION.tar.xz" -o /tmp/python-$VERSION.tar.xz && \
       mkdir /tmp/python-$VERSION && \
       tar -xf /tmp/python-$VERSION.tar.xz -C /tmp/python-$VERSION --strip-components=1 && \
