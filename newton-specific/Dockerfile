@@ -30,14 +30,9 @@ RUN apt-get update && \
         scipy \
         matplotlib \
         gspread \
-        pydrive \
-        keras \
-        scrapy \
-        nltk \
         bs4 \
         seaborn \
         xgboost \
-        opencv-python \
         Pillow \
-        tensorflow && \
+        statistics && \
     rm -rf /var/lib/apt/lists/*
