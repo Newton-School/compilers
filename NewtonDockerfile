@@ -34,5 +34,7 @@ RUN apt-get update && \
         seaborn \
         xgboost \
         Pillow \
-        statistics && \
+        urllib3 \
+        statistics \
+        requests && \
     rm -rf /var/lib/apt/lists/*
