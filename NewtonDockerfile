@@ -55,12 +55,21 @@ RUN set -xe && \
       rm -rf /tmp/*; \
     done
 
-RUN echo "deb http://archive.ubuntu.com/ubuntu bionic universe" > /etc/apt/sources.list.d/universe.list \
-    && apt-get update
-
-RUN add-apt-repository ppa:sqlite/sqlite-regex
 
 RUN set -xe && \
     apt-get update && \
-    apt-get install -y --no-install-recommends sqlite3 sqlite3-pcre && \
+    apt-get remove -y --no-install-recommends sqlite3 && \
     rm -rf /var/lib/apt/lists/*
+
+RUN set -xe && \
+    curl -fSsL "https://www.sqlite.org/2023/sqlite-autoconf-3410100.tar.gz" -o /tmp/sqlite-autoconf-3410100.tar.gz && \
+    mkdir /tmp/sqlite-autoconf-3410100 && \
+    tar -xf /tmp/sqlite-autoconf-3410100.tar.gz -C /tmp/sqlite-autoconf-3410100 --strip-components=1 && \
+    rm /tmp/sqlite-autoconf-3410100.tar.gz && \
+    cd /tmp/sqlite-autoconf-3410100 && \
+    ./configure \
+      --prefix=/usr/local/sqlite-autoconf-3410100 && \
+    make -j$(nproc) && \
+    make -j$(nproc) install && \
+    rm -rf /tmp/*
+    
