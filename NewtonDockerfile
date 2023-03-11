@@ -55,6 +55,9 @@ RUN set -xe && \
       rm -rf /tmp/*; \
     done
 
+RUN echo "deb http://archive.ubuntu.com/ubuntu bionic universe" > /etc/apt/sources.list.d/universe.list \
+    && apt-get update
+
 RUN add-apt-repository ppa:sqlite/sqlite-regex
 
 RUN set -xe && \
