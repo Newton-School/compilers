@@ -54,3 +54,10 @@ RUN set -xe && \
       make -j$(nproc) install && \
       rm -rf /tmp/*; \
     done
+
+RUN add-apt-repository ppa:sqlite/sqlite-regex
+
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends sqlite3 sqlite3-pcre && \
+    rm -rf /var/lib/apt/lists/*
