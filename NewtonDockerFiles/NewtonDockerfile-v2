@@ -10,3 +10,5 @@ RUN apt-get update && \
         acorn \
         acorn-walk && \
     rm -rf /var/lib/apt/lists/*
+
+ENV NODE_PATH="/usr/local/node-18.15.0/lib/node_modules"
