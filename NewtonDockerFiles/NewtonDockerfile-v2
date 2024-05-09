@@ -1,7 +1,7 @@
 FROM newtonschool/judge0-newton-compiler:0.7
 
 RUN apt-get update && \
-    /usr/local/node-12.14.0/bin/npm install -g \
+    /usr/local/node-18.15.0/bin/npm install -g \
         acorn \
-        acorn-walk &&\
+        acorn-walk && \
     rm -rf /var/lib/apt/lists/*
