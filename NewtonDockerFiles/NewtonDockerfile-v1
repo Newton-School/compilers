@@ -4,7 +4,6 @@ FROM judge0/compilers:1.4.0
 # Check for latest version here: https://www.python.org/downloads
 ENV PYTHON_FOR_ML_VERSIONS \
       3.10.4
-
 RUN set -xe && \
     for VERSION in $PYTHON_FOR_ML_VERSIONS; do \
       curl -fSsL "https://www.python.org/ftp/python/$VERSION/Python-$VERSION.tar.xz" -o /tmp/python-$VERSION.tar.xz && \
@@ -55,6 +54,12 @@ RUN set -xe && \
       rm -rf /tmp/*; \
     done
 
+RUN apt-get update && \
+    /usr/local/node-12.14.0/bin/npm install -g \
+        acorn \
+        acorn-walk \
+    rm -rf /var/lib/apt/lists/*
+
 
 RUN set -xe && \
     apt-get update && \
@@ -76,7 +81,6 @@ RUN set -xe && \
 
 ENV OLD_PYTHON_VERSIONS_TO_REMOVE \
       3.8.1
-
 RUN set -xe && \
     for VERSION in $OLD_PYTHON_VERSIONS_TO_REMOVE; do \
       rm -rf /usr/local/python-$VERSION; \
