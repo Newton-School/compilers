@@ -12,3 +12,18 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV NODE_PATH="/usr/local/node-18.15.0/lib/node_modules"
+
+
+# Install Node.js 20 to a separate directory for nand2tetris
+RUN curl -fsSL https://nodejs.org/dist/v20.9.0/node-v20.9.0-linux-x64.tar.xz | \
+    tar -xJ -C /usr/local/ && \
+    mv /usr/local/node-v20.9.0-linux-x64 /usr/local/node-20.9.0
+
+# Build nand2tetris using Node.js 20 with modified PATH
+RUN git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
+    cd nand2tetris-web-ide && \
+    PATH="/usr/local/node-20.9.0/bin:$PATH" npm install && \
+    PATH="/usr/local/node-20.9.0/bin:$PATH" npm run build && \
+    PATH="/usr/local/node-20.9.0/bin:$PATH" npm install -g ./cli && \
+    rm -rf /var/lib/apt/lists/*
+RUN ln -s /usr/local/node-20.9.0/bin/nand2tetris /usr/local/bin/nand2tetris
