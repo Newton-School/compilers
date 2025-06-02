@@ -36,7 +36,7 @@ RUN set -eux; \
 # Set global NODE_PATH for module resolution
 ENV NODE_PATH="$NODE_PREFIX-$NODE_VERSION/lib/node_modules"
 
-# Build nand2tetris using Node.js 20 with modified PATH
+# Build nand2tetris using Node.js 20
 RUN set -eux; \
     cd /usr/local/lib && \
     git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
