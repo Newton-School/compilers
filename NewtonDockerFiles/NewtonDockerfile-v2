@@ -1,29 +1,46 @@
 FROM newtonschool/judge0-newton-compiler:0.7
 
+# Remove old node versions
+ENV OLD_NODE_VERSIONS_TO_REMOVE \
+      12.14.0 \
+      18.15.0
+RUN set -xe && \
+    for VERSION in $OLD_NODE_VERSIONS_TO_REMOVE; do \
+      rm -rf /usr/local/node-$VERSION; \
+    done
 
-RUN apt-get update && \
-    rm /usr/bin/node && \
-    rm /usr/bin/npm && \
-    ln -s /usr/local/node-18.15.0/bin/node /usr/bin/node && \
-    ln -s /usr/local/node-18.15.0/bin/npm /usr/bin/npm && \
-    /usr/local/node-18.15.0/bin/npm install -g \
+# Set node versions
+ENV NODE_VERSION=20.9.0 \
+    NODE_DISTRO=linux-x64 \
+    NODE_PREFIX=/usr/local/node \
+    LATEST_TYPESCRIPT_VERSION=5.8.3
+
+# Download and install Node.js prebuilt binary
+RUN set -eux; \
+    curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$NODE_DISTRO.tar.xz" -o /tmp/node.tar.xz && \
+    mkdir -p "$NODE_PREFIX-$NODE_VERSION" && \
+    tar -xf /tmp/node.tar.xz -C "$NODE_PREFIX-$NODE_VERSION" --strip-components=1 && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/node" /usr/local/bin/node && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/npm" /usr/local/bin/npm && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/npx" /usr/local/bin/npx && \
+    rm -rf /tmp/node.tar.xz
+
+# Install global TypeScript and related packages
+RUN set -eux; \
+    npm install -g \
         acorn \
-        acorn-walk && \
-    rm -rf /var/lib/apt/lists/*
+        acorn-walk \
+        typescript@$LATEST_TYPESCRIPT_VERSION && \
+    npm cache clean --force
 
-ENV NODE_PATH="/usr/local/node-18.15.0/lib/node_modules"
-
-
-# Install Node.js 20 to a separate directory for nand2tetris
-RUN curl -fsSL https://nodejs.org/dist/v20.9.0/node-v20.9.0-linux-x64.tar.xz | \
-    tar -xJ -C /usr/local/ && \
-    mv /usr/local/node-v20.9.0-linux-x64 /usr/local/node-20.9.0
+# Set global NODE_PATH for module resolution
+ENV NODE_PATH="$NODE_PREFIX-$NODE_VERSION/lib/node_modules"
 
 # Build nand2tetris using Node.js 20 with modified PATH
 RUN git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
     cd nand2tetris-web-ide && \
-    PATH="/usr/local/node-20.9.0/bin:$PATH" npm install && \
-    PATH="/usr/local/node-20.9.0/bin:$PATH" npm run build && \
-    PATH="/usr/local/node-20.9.0/bin:$PATH" npm install -g ./cli && \
+    npm install && \
+    npm run build && \
+    npm install -g ./cli && \
     rm -rf /var/lib/apt/lists/*
 RUN ln -s /usr/local/node-20.9.0/bin/nand2tetris /usr/local/bin/nand2tetris
