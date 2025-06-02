@@ -38,14 +38,10 @@ ENV NODE_PATH="$NODE_PREFIX-$NODE_VERSION/lib/node_modules"
 
 # Build nand2tetris using Node.js 20 with modified PATH
 RUN set -eux; \
-    mkdir -p /tmp/n2t && \
-    cd /tmp/n2t && \
+    cd /usr/local/lib && \
     git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
     cd nand2tetris-web-ide && \
     npm install && \
     npm run build && \
-    cd cli && \
-    npm install && npm run build && npm pack && \
-    npm install -g ./nand2tetris-cli-*.tgz && \
-    cd / && rm -rf /tmp/n2t
+    npm install -g ./cli
 RUN ln -sf /usr/local/node-20.9.0/bin/nand2tetris /usr/local/bin/nand2tetris
