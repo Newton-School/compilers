@@ -38,27 +38,40 @@ RUN apt-get update && \
         requests && \
     rm -rf /var/lib/apt/lists/*
 
-ENV LATEST_NODE_VERSIONS \
-      18.15.0
+# Remove old node versions
+ENV OLD_NODE_VERSIONS_TO_REMOVE \
+      12.14.0
 RUN set -xe && \
-    for VERSION in $LATEST_NODE_VERSIONS; do \
-      curl -fSsL "https://nodejs.org/dist/v$VERSION/node-v$VERSION.tar.gz" -o /tmp/node-$VERSION.tar.gz && \
-      mkdir /tmp/node-$VERSION && \
-      tar -xf /tmp/node-$VERSION.tar.gz -C /tmp/node-$VERSION --strip-components=1 && \
-      rm /tmp/node-$VERSION.tar.gz && \
-      cd /tmp/node-$VERSION && \
-      ./configure \
-        --prefix=/usr/local/node-$VERSION && \
-      make -j$(nproc) && \
-      make -j$(nproc) install && \
-      rm -rf /tmp/*; \
+    for VERSION in $OLD_NODE_VERSIONS_TO_REMOVE; do \
+      rm -rf /usr/local/node-$VERSION; \
     done
 
-RUN apt-get update && \
-    /usr/local/node-12.14.0/bin/npm install -g \
+# Set node versions
+ENV NODE_VERSION=20.9.0 \
+    NODE_DISTRO=linux-x64 \
+    NODE_PREFIX=/usr/local/node \
+    LATEST_TYPESCRIPT_VERSION=5.8.3
+
+# Download and install Node.js prebuilt binary
+RUN set -eux; \
+    curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$NODE_DISTRO.tar.xz" -o /tmp/node.tar.xz && \
+    mkdir -p "$NODE_PREFIX-$NODE_VERSION" && \
+    tar -xf /tmp/node.tar.xz -C "$NODE_PREFIX-$NODE_VERSION" --strip-components=1 && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/node" /usr/local/bin/node && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/npm" /usr/local/bin/npm && \
+    ln -sf "$NODE_PREFIX-$NODE_VERSION/bin/npx" /usr/local/bin/npx && \
+    rm -rf /tmp/node.tar.xz
+
+# Install global TypeScript and related packages
+RUN set -eux; \
+    npm install -g \
         acorn \
         acorn-walk \
-    rm -rf /var/lib/apt/lists/*
+        typescript@$LATEST_TYPESCRIPT_VERSION && \
+    npm cache clean --force
+
+# Set global NODE_PATH for module resolution
+ENV NODE_PATH="$NODE_PREFIX-$NODE_VERSION/lib/node_modules"
 
 
 RUN set -xe && \
@@ -103,3 +116,13 @@ RUN set -xe && \
       make -j$(nproc) install && \
       rm -rf /tmp/*; \
     done
+
+# Build nand2tetris using Node.js 20
+RUN set -eux; \
+    cd /usr/local/lib && \
+    git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
+    cd nand2tetris-web-ide && \
+    npm install && \
+    npm run build && \
+    npm install -g ./cli
+RUN ln -sf /usr/local/node-20.9.0/bin/nand2tetris /usr/local/bin/nand2tetris
