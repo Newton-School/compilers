@@ -126,3 +126,11 @@ RUN set -eux; \
     npm run build && \
     npm install -g ./cli
 RUN ln -sf /usr/local/node-20.9.0/bin/nand2tetris /usr/local/bin/nand2tetris
+
+# ───── add Mars (MIPS) support ──────────────────────────────────────────
+RUN set -xe && \
+    mkdir -p /usr/local/mars && \
+    curl -fSsL "https://github.com/dpetersanderson/MARS/releases/download/v.4.5.1/Mars4_5.jar" \
+         -o /usr/local/mars/mars.jar && \
+    chmod 644 /usr/local/mars/mars.jar
+# ────────────────────────────────────────────────────────────────────────
