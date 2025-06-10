@@ -132,5 +132,5 @@ RUN set -xe && \
     mkdir -p /usr/local/mars && \
     curl -fSsL "https://github.com/dpetersanderson/MARS/releases/download/v.4.5.1/Mars4_5.jar" \
          -o /usr/local/mars/mars.jar && \
-    chmod 644 /usr/local/mars/mars.jar
+    chmod 655 /usr/local/mars/mars.jar
 # ────────────────────────────────────────────────────────────────────────
