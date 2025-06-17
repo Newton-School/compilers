@@ -35,7 +35,9 @@ RUN apt-get update && \
         Pillow \
         urllib3 \
         statistics \
-        requests && \
+        requests \
+        qiskit \
+        qutip && \
     rm -rf /var/lib/apt/lists/*
 
 # Remove old node versions
