@@ -18,6 +18,28 @@ RUN set -xe && \
       rm -rf /tmp/*; \
     done
 
+# Python for ML
+RUN apt-get update && \
+    /usr/local/python-3.10.4/bin/pip3 install \
+        mlxtend \
+        numpy \
+        pandas \
+        scikit-learn \
+        pytest \
+        scipy \
+        matplotlib \
+        gspread \
+        bs4 \
+        seaborn \
+        xgboost \
+        Pillow \
+        urllib3 \
+        statistics \
+        requests \
+        qiskit \
+        qutip && \
+    rm -rf /var/lib/apt/lists/*
+
 # Remove old node versions
 ENV OLD_NODE_VERSIONS_TO_REMOVE \
       12.14.0
@@ -118,22 +140,5 @@ RUN set -xe && \
 # Python for ML
 RUN apt-get update && \
     /usr/local/python-3.10.4/bin/pip3 install \
-        mlxtend \
-        numpy \
-        pandas \
-        scikit-learn \
-        pytest \
-        scipy \
-        matplotlib \
-        gspread \
-        bs4 \
-        seaborn \
-        xgboost \
-        Pillow \
-        urllib3 \
-        statistics \
-        requests \
-        qiskit \
-        qutip \
         qiskit-aer && \
     rm -rf /var/lib/apt/lists/*
