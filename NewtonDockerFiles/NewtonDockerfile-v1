@@ -1,4 +1,4 @@
-FROM judge0/compilers:1.4.0
+FROM judge0/compilers:1.4.0-cgroupv2
 
 
 # Check for latest version here: https://www.python.org/downloads
