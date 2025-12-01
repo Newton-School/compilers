@@ -105,6 +105,7 @@ RUN set -xe && \
 RUN set -eux; \
     cd /usr/local/lib && \
     git clone https://github.com/Newton-School/nand2tetris-web-ide.git && \
+    echo "Cloning nand2tetris-web-ide repository" && \
     cd nand2tetris-web-ide && \
     npm install && \
     npm run build && \
