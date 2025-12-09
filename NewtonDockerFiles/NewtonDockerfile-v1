@@ -47,7 +47,8 @@ RUN set -eux; \
     npm install -g \
         acorn \
         acorn-walk \
-        typescript@$LATEST_TYPESCRIPT_VERSION && \
+        typescript@$LATEST_TYPESCRIPT_VERSION \
+        @types/node && \
     npm cache clean --force
 
 # Set global NODE_PATH for module resolution
