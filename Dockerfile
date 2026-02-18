@@ -460,7 +460,7 @@ RUN set -xe && \
 
 # Check for latest version here: https://cloud.r-project.org/src/base
 ENV R_VERSIONS \
-      4.5.0
+      4.0.0
 RUN set -xe && \
     apt-get update && \
     apt-get install -y --no-install-recommends libpcre2-dev && \

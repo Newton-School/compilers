@@ -182,7 +182,7 @@ Judge0 comes in two flavors: [Judge0](https://rapidapi.com/hermanzdosilovic/api/
 </tr>
 <tr>
 <td style="text-align:center">39</td>
-<td style="text-align:center">R (4.5.0)</td>
+<td style="text-align:center">R (4.0.0)</td>
 </tr>
 <tr>
 <td style="text-align:center">40</td>
