@@ -76,45 +76,6 @@ RUN set -xe && \
     make -j$(nproc) install && \
     rm -rf /tmp/*
 
-ENV OLD_R_VERSIONS_TO_REMOVE \
-      4.0.0
-RUN set -xe && \
-    for VERSION in $OLD_R_VERSIONS_TO_REMOVE; do \
-      rm -rf /usr/local/r-$VERSION; \
-    done
-
-# Check for latest version here: https://cloud.r-project.org/src/base
-ENV R_VERSIONS \
-      4.5.2
-RUN set -xe && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        libpcre2-dev \
-        libcurl4-openssl-dev \
-        ca-certificates \
-        zlib1g-dev \
-        libbz2-dev \
-        liblzma-dev \
-        libreadline-dev \
-        xz-utils && \
-    rm -rf /var/lib/apt/lists/* && \
-    for VERSION in $R_VERSIONS; do \
-      curl -fSsL "https://cloud.r-project.org/src/base/R-4/R-$VERSION.tar.gz" -o /tmp/r-$VERSION.tar.gz && \
-      mkdir /tmp/r-$VERSION && \
-      tar -xf /tmp/r-$VERSION.tar.gz -C /tmp/r-$VERSION --strip-components=1 && \
-      rm /tmp/r-$VERSION.tar.gz && \
-      cd /tmp/r-$VERSION && \
-      ./configure --prefix=/usr/local/r-$VERSION && \
-      make -j$(nproc) && \
-      make -j$(nproc) install && \
-      rm -rf /tmp/*; \
-    done
-
-# Preinstall commonly used R package(s)
-RUN set -xe && \
-    /usr/local/r-4.5.2/bin/Rscript -e 'options(repos="https://cloud.r-project.org"); install.packages("data.table")'
-
-
 ENV OLD_PYTHON_VERSIONS_TO_REMOVE \
       3.8.1
 RUN set -xe && \
@@ -184,3 +145,41 @@ RUN apt-get update && \
         qiskit-aer \
         qutip && \
     rm -rf /var/lib/apt/lists/*
+
+ENV OLD_R_VERSIONS_TO_REMOVE \
+      4.0.0
+RUN set -xe && \
+    for VERSION in $OLD_R_VERSIONS_TO_REMOVE; do \
+      rm -rf /usr/local/r-$VERSION; \
+    done
+
+# Check for latest version here: https://cloud.r-project.org/src/base
+ENV R_VERSIONS \
+      4.5.2
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libpcre2-dev \
+        libcurl4-openssl-dev \
+        ca-certificates \
+        zlib1g-dev \
+        libbz2-dev \
+        liblzma-dev \
+        libreadline-dev \
+        xz-utils && \
+    rm -rf /var/lib/apt/lists/* && \
+    for VERSION in $R_VERSIONS; do \
+      curl -fSsL "https://cloud.r-project.org/src/base/R-4/R-$VERSION.tar.gz" -o /tmp/r-$VERSION.tar.gz && \
+      mkdir /tmp/r-$VERSION && \
+      tar -xf /tmp/r-$VERSION.tar.gz -C /tmp/r-$VERSION --strip-components=1 && \
+      rm /tmp/r-$VERSION.tar.gz && \
+      cd /tmp/r-$VERSION && \
+      ./configure --prefix=/usr/local/r-$VERSION && \
+      make -j$(nproc) && \
+      make -j$(nproc) install && \
+      rm -rf /tmp/*; \
+    done
+
+# Preinstall commonly used R package(s)
+RUN set -xe && \
+    /usr/local/r-4.5.2/bin/Rscript -e 'options(repos="https://cloud.r-project.org"); install.packages("data.table")'
