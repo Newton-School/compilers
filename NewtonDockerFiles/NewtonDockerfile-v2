@@ -118,6 +118,7 @@ RUN set -xe && \
         libsystemd-dev \
         libfontconfig1 \
         libgl1 \
+        gfortran \
         pkg-config \
         autoconf \
         automake \
