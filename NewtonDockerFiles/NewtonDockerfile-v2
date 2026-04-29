@@ -1,0 +1,677 @@
+# syntax=docker/dockerfile:1.6
+#
+# Newton School Judge0 compilers image - v2 (modernised, single-layer)
+#
+# - Single Dockerfile (no longer layered on judge0/compilers:1.4.0).
+# - Base: buildpack-deps:bookworm (Debian 12).
+# - One latest-stable per language family, except GCC where 9.5.0 is kept
+#   alongside 14.2.0 to preserve the GCC 9.x compile path for legacy
+#   student submissions.
+# - cgroup v2 only via isolate v2.
+# - Drops: Python 2.7, Mono, VB.Net.
+# - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
+#
+# Layer ordering: stable-on-top, volatile-on-bottom.
+#   Tier 0: foundation (base/apt/isolate)
+#   Tier 1: GCC, Clang
+#   Tier 2: utility/niche langs (rare bumps)
+#   Tier 3: yearly langs (Haskell, OCaml, Erlang, Elixir, R)
+#   Tier 4: JVM stack (JDK, Kotlin, Scala, Groovy, Clojure)
+#   Tier 5: .NET LTS
+#   Tier 6: yearly mainstream compiled (Swift, Go, Rust)
+#   Tier 7: yearly mainstream scripting (PHP, Ruby, Python default)
+#   Tier 8: Node + TypeScript (TypeScript split out, frequent bumps)
+#   Tier 9: Python 3.12 ML interpreter (split from packages)
+#   Tier 10: Newton extras (MARS, nand2tetris)
+#   Tier 11: Python ML pip install — most volatile, BOTTOM
+#
+# Cache-friendly editing rules:
+#   - Adding/removing pip pkgs: edit the bottom layer only.
+#   - Bumping a language: cascades to everything below it. Choose pins thoughtfully.
+#   - Adding a new language: APPEND a new RUN at the bottom (above pip install)
+#     so existing cache stays warm.
+#
+# Multi-arch: amd64 + arm64 supported via TARGETARCH branching.
+# Build:
+#   docker buildx build --platform linux/arm64 \
+#     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
+#     -t newtonschool/judge0-newton-compiler:0.26-arm64 \
+#     compilers
+#
+FROM buildpack-deps:bookworm AS base
+
+ARG TARGETARCH
+
+# ────────────────────────────────────────────────────────────────────────
+# Version pins.  WARNING: this ENV layer sits at the top — *any* edit here
+# invalidates the cache for every layer below.  For simple package adds,
+# prefer appending a new RUN at the bottom.
+# ────────────────────────────────────────────────────────────────────────
+ENV GCC_LEGACY_VERSION=9.5.0 \
+    GCC_VERSION=14.2.0 \
+    LLVM_VERSION=19 \
+    PYTHON_VERSION=3.13.1 \
+    PYTHON_ML_VERSION=3.12.7 \
+    RUBY_VERSION=3.3.6 \
+    NODE_VERSION=22.11.0 \
+    TYPESCRIPT_VERSION=5.7.2 \
+    JDK_VERSION=21.0.5+11 \
+    KOTLIN_VERSION=2.1.0 \
+    SCALA_VERSION=3.6.2 \
+    GROOVY_VERSION=4.0.24 \
+    CLOJURE_VERSION=1.12.0.1495 \
+    GO_VERSION=1.23.4 \
+    RUST_VERSION=1.83.0 \
+    PHP_VERSION=8.4.1 \
+    SWIFT_VERSION=6.0.3 \
+    GHC_VERSION=9.10.1 \
+    OCAML_VERSION=5.2.0 \
+    OTP_VERSION=27.1.2 \
+    ELIXIR_VERSION=1.17.3 \
+    R_VERSION=4.5.2 \
+    LUA_VERSION=5.4.7 \
+    FPC_VERSION=3.2.2 \
+    SBCL_VERSION=2.4.10 \
+    DMD_VERSION=2.110.0 \
+    LDC_VERSION=1.39.0 \
+    GNUCOBOL_VERSION=3.2 \
+    GPROLOG_VERSION=1.5.0 \
+    BASH_VERSION=5.2.37 \
+    FBC_VERSION=1.10.1 \
+    NASM_VERSION=2.16.03 \
+    SQLITE_VERSION=3470000 \
+    SQLITE_YEAR=2024 \
+    DOTNET_VERSION=8.0.404 \
+    ISOLATE_REF=v2.0 \
+    NAND2TETRIS_REPO=https://github.com/Newton-School/nand2tetris-web-ide.git \
+    MARS_VERSION=4.5.1
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
+    DEBIAN_FRONTEND=noninteractive
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 0 — foundation (almost never changes)
+# ════════════════════════════════════════════════════════════════════════
+
+# Base apt deps
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        cmake \
+        gnupg \
+        dirmngr \
+        sudo \
+        unzip \
+        zip \
+        xz-utils \
+        bzip2 \
+        locales \
+        git \
+        bison \
+        flex \
+        re2c \
+        libgmp-dev \
+        libncurses-dev \
+        libreadline-dev \
+        libssl-dev \
+        libffi-dev \
+        zlib1g-dev \
+        liblzma-dev \
+        libbz2-dev \
+        libsqlite3-dev \
+        libpcre2-dev \
+        libcurl4-openssl-dev \
+        libxml2-dev \
+        libxslt1-dev \
+        libyaml-dev \
+        libgdbm-dev \
+        libdb-dev \
+        libblas-dev \
+        liblapack-dev \
+        libcap-dev \
+        libsystemd-dev \
+        libfontconfig1 \
+        libgl1 \
+        gfortran \
+        pkg-config \
+        autoconf \
+        automake \
+        libtool \
+        m4 && \
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen && \
+    rm -rf /var/lib/apt/lists/*
+
+# isolate v2 (cgroup v2 sandbox)
+RUN set -xe && \
+    git clone https://github.com/ioi/isolate.git /tmp/isolate && \
+    cd /tmp/isolate && \
+    git checkout ${ISOLATE_REF} && \
+    make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/isolate
+ENV BOX_ROOT=/var/local/lib/isolate
+
+# GCC 9.5.0 — frozen forever (preserves GCC-9-era student-code compatibility)
+RUN set -xe && \
+    curl -fSsL "https://ftpmirror.gnu.org/gcc/gcc-${GCC_LEGACY_VERSION}/gcc-${GCC_LEGACY_VERSION}.tar.gz" -o /tmp/gcc.tar.gz && \
+    mkdir -p /tmp/gcc && tar -xf /tmp/gcc.tar.gz -C /tmp/gcc --strip-components=1 && \
+    rm /tmp/gcc.tar.gz && \
+    cd /tmp/gcc && \
+    ./contrib/download_prerequisites && \
+    rm -f *.tar.* && \
+    mkdir /tmp/gcc-build && cd /tmp/gcc-build && \
+    /tmp/gcc/configure \
+        --disable-multilib \
+        --disable-libsanitizer \
+        --enable-languages=c,c++,fortran \
+        --prefix=/usr/local/gcc-${GCC_LEGACY_VERSION} && \
+    make -j"$(nproc)" && \
+    make -j"$(nproc)" install-strip && \
+    cd / && rm -rf /tmp/gcc /tmp/gcc-build
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 1 — modern C/C++ toolchains (yearly bumps)
+# ════════════════════════════════════════════════════════════════════════
+
+# GCC 14.2.0 — current default for new submissions
+RUN set -xe && \
+    curl -fSsL "https://ftpmirror.gnu.org/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.gz" -o /tmp/gcc.tar.gz && \
+    mkdir -p /tmp/gcc && tar -xf /tmp/gcc.tar.gz -C /tmp/gcc --strip-components=1 && \
+    rm /tmp/gcc.tar.gz && \
+    cd /tmp/gcc && \
+    ./contrib/download_prerequisites && \
+    rm -f *.tar.* && \
+    mkdir /tmp/gcc-build && cd /tmp/gcc-build && \
+    /tmp/gcc/configure \
+        --disable-multilib \
+        --enable-languages=c,c++,fortran \
+        --prefix=/usr/local/gcc-${GCC_VERSION} && \
+    make -j"$(nproc)" && \
+    make -j"$(nproc)" install-strip && \
+    cd / && rm -rf /tmp/gcc /tmp/gcc-build
+
+# LLVM/Clang ${LLVM_VERSION} from apt.llvm.org (C, C++, Objective-C)
+RUN set -xe && \
+    curl -fsSL "https://apt.llvm.org/llvm-snapshot.gpg.key" | gpg --dearmor -o /etc/apt/trusted.gpg.d/llvm.gpg && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-${LLVM_VERSION} main" > /etc/apt/sources.list.d/llvm.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        clang-${LLVM_VERSION} \
+        lld-${LLVM_VERSION} \
+        libc++-${LLVM_VERSION}-dev \
+        libc++abi-${LLVM_VERSION}-dev \
+        gnustep-devel && \
+    ln -sf /usr/bin/clang-${LLVM_VERSION} /usr/local/bin/clang && \
+    ln -sf /usr/bin/clang++-${LLVM_VERSION} /usr/local/bin/clang++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 2 — utility / niche languages (very rare bumps)
+# ════════════════════════════════════════════════════════════════════════
+
+# Bash
+RUN set -xe && \
+    curl -fSsL "https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz" -o /tmp/bash.tar.gz && \
+    mkdir /tmp/bash && tar -xf /tmp/bash.tar.gz -C /tmp/bash --strip-components=1 && \
+    cd /tmp/bash && \
+    ./configure --prefix=/usr/local/bash-${BASH_VERSION} && \
+    make -j"$(nproc)" && make install && \
+    cd / && rm -rf /tmp/bash /tmp/bash.tar.gz
+
+# Lua
+RUN set -xe && \
+    curl -fSsL "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz" -o /tmp/lua.tar.gz && \
+    mkdir /tmp/lua && tar -xf /tmp/lua.tar.gz -C /tmp/lua --strip-components=1 && \
+    cd /tmp/lua && \
+    make linux -j"$(nproc)" && \
+    make install INSTALL_TOP=/usr/local/lua-${LUA_VERSION} && \
+    cd / && rm -rf /tmp/lua /tmp/lua.tar.gz
+
+# NASM (assembler — amd64 only at runtime, but builds on both arches)
+RUN set -xe && \
+    curl -fSsL "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.gz" -o /tmp/nasm.tar.gz && \
+    mkdir /tmp/nasm && tar -xf /tmp/nasm.tar.gz -C /tmp/nasm --strip-components=1 && \
+    cd /tmp/nasm && \
+    ./configure --prefix=/usr/local/nasm-${NASM_VERSION} && \
+    make -j"$(nproc)" nasm ndisasm && \
+    make install && \
+    echo '#!/bin/sh' > /usr/local/nasm-${NASM_VERSION}/bin/nasmld && \
+    echo 'set -e' >> /usr/local/nasm-${NASM_VERSION}/bin/nasmld && \
+    echo "/usr/local/nasm-${NASM_VERSION}/bin/nasm -o main.o \"\$@\" && ld main.o" >> /usr/local/nasm-${NASM_VERSION}/bin/nasmld && \
+    chmod +x /usr/local/nasm-${NASM_VERSION}/bin/nasmld && \
+    cd / && rm -rf /tmp/nasm /tmp/nasm.tar.gz
+
+# SQLite
+RUN set -xe && \
+    curl -fSsL "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_VERSION}.tar.gz" -o /tmp/sqlite.tar.gz && \
+    mkdir /tmp/sqlite && tar -xf /tmp/sqlite.tar.gz -C /tmp/sqlite --strip-components=1 && \
+    cd /tmp/sqlite && \
+    ./configure --prefix=/usr/local/sqlite-autoconf-${SQLITE_VERSION} && \
+    make -j"$(nproc)" && make install && \
+    cd / && rm -rf /tmp/sqlite /tmp/sqlite.tar.gz
+
+# FreeBASIC (amd64 prebuilt; arm64 not officially supported - skipped)
+RUN set -xe && \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
+        curl -fSsL "https://downloads.sourceforge.net/project/fbc/Binaries%20-%20Linux/FreeBASIC-${FBC_VERSION}-linux-x86_64.tar.gz" -o /tmp/fbc.tar.gz && \
+        mkdir -p /usr/local/fbc-${FBC_VERSION} && \
+        tar -xf /tmp/fbc.tar.gz -C /usr/local/fbc-${FBC_VERSION} --strip-components=1 && \
+        rm /tmp/fbc.tar.gz ; \
+    else \
+        echo "FreeBASIC not available for ${TARGETARCH}; skipping" ; \
+    fi
+
+# Free Pascal: amd64 prebuilt; arm64 falls back to bookworm apt
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) \
+            curl -fSsL "https://downloads.sourceforge.net/project/freepascal/Linux/${FPC_VERSION}/fpc-${FPC_VERSION}.x86_64-linux.tar" -o /tmp/fpc.tar && \
+            mkdir /tmp/fpc && tar -xf /tmp/fpc.tar -C /tmp/fpc --strip-components=1 && \
+            cd /tmp/fpc && \
+            echo "/usr/local/fpc-${FPC_VERSION}" | sh install.sh && \
+            cd / && rm -rf /tmp/fpc /tmp/fpc.tar \
+            ;; \
+        arm64) \
+            apt-get update && \
+            apt-get install -y --no-install-recommends fpc && \
+            rm -rf /var/lib/apt/lists/* && \
+            FPC_APT_VER="$(dpkg-query -W -f='${Version}' fpc | cut -d- -f1 | cut -d+ -f1)" && \
+            mkdir -p /usr/local/fpc-${FPC_APT_VER}/bin && \
+            ln -sf /usr/bin/fpc /usr/local/fpc-${FPC_APT_VER}/bin/fpc \
+            ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac
+
+# GnuCOBOL
+RUN set -xe && \
+    curl -fSsL "https://ftp.gnu.org/gnu/gnucobol/gnucobol-${GNUCOBOL_VERSION}.tar.xz" -o /tmp/cobol.tar.xz && \
+    mkdir /tmp/cobol && tar -xf /tmp/cobol.tar.xz -C /tmp/cobol --strip-components=1 && \
+    cd /tmp/cobol && \
+    ./configure --prefix=/usr/local/gnucobol-${GNUCOBOL_VERSION} && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/cobol /tmp/cobol.tar.xz
+
+# GNU Prolog
+RUN set -xe && \
+    curl -fSsL "http://gprolog.org/gprolog-${GPROLOG_VERSION}.tar.gz" -o /tmp/gprolog.tar.gz && \
+    mkdir /tmp/gprolog && tar -xf /tmp/gprolog.tar.gz -C /tmp/gprolog --strip-components=1 && \
+    cd /tmp/gprolog/src && \
+    ./configure --prefix=/usr/local/gprolog-${GPROLOG_VERSION} && \
+    make -j"$(nproc)" && make install-strip && \
+    cd / && rm -rf /tmp/gprolog /tmp/gprolog.tar.gz
+
+# SBCL: amd64 prebuilt; arm64 falls back to bookworm apt sbcl
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) \
+            curl -fSsL "https://downloads.sourceforge.net/project/sbcl/sbcl/${SBCL_VERSION}/sbcl-${SBCL_VERSION}-x86-64-linux-binary.tar.bz2" -o /tmp/sbcl.tar.bz2 && \
+            mkdir /tmp/sbcl && tar -xf /tmp/sbcl.tar.bz2 -C /tmp/sbcl --strip-components=1 && \
+            cd /tmp/sbcl && \
+            INSTALL_ROOT=/usr/local/sbcl-${SBCL_VERSION} sh install.sh && \
+            cd / && rm -rf /tmp/sbcl /tmp/sbcl.tar.bz2 \
+            ;; \
+        arm64) \
+            apt-get update && \
+            apt-get install -y --no-install-recommends sbcl && \
+            rm -rf /var/lib/apt/lists/* && \
+            SBCL_APT_VER="$(dpkg-query -W -f='${Version}' sbcl | cut -d- -f1)" && \
+            mkdir -p /usr/local/sbcl-${SBCL_APT_VER}/bin /usr/local/sbcl-${SBCL_APT_VER}/lib && \
+            ln -sf /usr/bin/sbcl /usr/local/sbcl-${SBCL_APT_VER}/bin/sbcl && \
+            ln -sf /usr/lib/sbcl /usr/local/sbcl-${SBCL_APT_VER}/lib/sbcl && \
+            ln -sf /usr/local/sbcl-${SBCL_APT_VER} /usr/local/sbcl \
+            ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac
+
+# D: DMD on amd64, LDC on arm64 (DMD has no arm64 Linux binary)
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) \
+            curl -fSsL "https://downloads.dlang.org/releases/2.x/${DMD_VERSION}/dmd.${DMD_VERSION}.linux.tar.xz" -o /tmp/d.tar.xz && \
+            mkdir -p /usr/local/d-${DMD_VERSION} && \
+            tar -xf /tmp/d.tar.xz -C /usr/local/d-${DMD_VERSION} --strip-components=1 && \
+            rm -rf /usr/local/d-${DMD_VERSION}/linux/*32 && \
+            rm /tmp/d.tar.xz \
+            ;; \
+        arm64) \
+            curl -fSsL "https://github.com/ldc-developers/ldc/releases/download/v${LDC_VERSION}/ldc2-${LDC_VERSION}-linux-aarch64.tar.xz" -o /tmp/ldc.tar.xz && \
+            mkdir -p /usr/local/d-${LDC_VERSION} && \
+            tar -xf /tmp/ldc.tar.xz -C /usr/local/d-${LDC_VERSION} --strip-components=1 && \
+            rm /tmp/ldc.tar.xz && \
+            mkdir -p /usr/local/d-${LDC_VERSION}/linux/bin64 && \
+            ln -sf /usr/local/d-${LDC_VERSION}/bin/ldc2 /usr/local/d-${LDC_VERSION}/linux/bin64/dmd \
+            ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac
+
+# Octave (apt — bookworm 8.4 ≈ latest 9.x; saves ~30 min vs source build)
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends octave && \
+    rm -rf /var/lib/apt/lists/* && \
+    OCT_PKG_VER="$(dpkg-query -W -f='${Version}' octave | cut -d- -f1)" && \
+    mkdir -p /usr/local/octave-${OCT_PKG_VER}/bin && \
+    ln -sf /usr/bin/octave-cli /usr/local/octave-${OCT_PKG_VER}/bin/octave-cli && \
+    ln -sf /usr/local/octave-${OCT_PKG_VER} /usr/local/octave
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 3 — yearly-cadence languages (Haskell, OCaml, Erlang, Elixir, R)
+# ════════════════════════════════════════════════════════════════════════
+
+# Haskell GHC (prebuilt). arm64 has no deb12 build → use deb11 + libtinfo5 shim
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) GHC_ARCH=x86_64-deb12-linux ;; \
+        arm64) GHC_ARCH=aarch64-deb11-linux ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    if [ ! -e /usr/lib/aarch64-linux-gnu/libtinfo.so.5 ] && [ -e /usr/lib/aarch64-linux-gnu/libtinfo.so.6 ]; then \
+        ln -sf /usr/lib/aarch64-linux-gnu/libtinfo.so.6 /usr/lib/aarch64-linux-gnu/libtinfo.so.5; \
+    fi && \
+    if [ ! -e /usr/lib/x86_64-linux-gnu/libtinfo.so.5 ] && [ -e /usr/lib/x86_64-linux-gnu/libtinfo.so.6 ]; then \
+        ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5; \
+    fi && \
+    curl -fSsL "https://downloads.haskell.org/~ghc/${GHC_VERSION}/ghc-${GHC_VERSION}-${GHC_ARCH}.tar.xz" -o /tmp/ghc.tar.xz && \
+    mkdir /tmp/ghc && tar -xf /tmp/ghc.tar.xz -C /tmp/ghc --strip-components=1 && \
+    cd /tmp/ghc && \
+    ./configure --prefix=/usr/local/ghc-${GHC_VERSION} && \
+    make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/ghc /tmp/ghc.tar.xz
+
+# OCaml (source)
+RUN set -xe && \
+    curl -fSsL "https://github.com/ocaml/ocaml/archive/refs/tags/${OCAML_VERSION}.tar.gz" -o /tmp/ocaml.tar.gz && \
+    mkdir /tmp/ocaml && tar -xf /tmp/ocaml.tar.gz -C /tmp/ocaml --strip-components=1 && \
+    cd /tmp/ocaml && \
+    ./configure --prefix=/usr/local/ocaml-${OCAML_VERSION} \
+                --disable-ocamldoc --disable-debugger && \
+    make -j"$(nproc)" && make install && \
+    cd / && rm -rf /tmp/ocaml /tmp/ocaml.tar.gz
+
+# Erlang/OTP (source build — slowest layer in this tier, ~15-20 min)
+RUN set -xe && \
+    curl -fSsL "https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION}/otp_src_${OTP_VERSION}.tar.gz" -o /tmp/otp.tar.gz && \
+    mkdir /tmp/otp && tar -xf /tmp/otp.tar.gz -C /tmp/otp --strip-components=1 && \
+    cd /tmp/otp && \
+    ./configure --prefix=/usr/local/erlang-${OTP_VERSION} \
+                --without-javac --without-wx --without-debugger \
+                --without-observer --without-et && \
+    make -j"$(nproc)" && make install && \
+    cd / && rm -rf /tmp/otp /tmp/otp.tar.gz && \
+    ln -sf /usr/local/erlang-${OTP_VERSION}/bin/erl /usr/local/bin/erl
+
+# Elixir (prebuilt for the OTP we just built)
+RUN set -xe && \
+    curl -fSsL "https://github.com/elixir-lang/elixir/releases/download/v${ELIXIR_VERSION}/elixir-otp-${OTP_VERSION%%.*}.zip" -o /tmp/elixir.zip && \
+    mkdir -p /usr/local/elixir-${ELIXIR_VERSION} && \
+    unzip -q /tmp/elixir.zip -d /usr/local/elixir-${ELIXIR_VERSION} && \
+    rm /tmp/elixir.zip
+
+# R (source build + data.table preinstall)
+RUN set -xe && \
+    curl -fSsL "https://cloud.r-project.org/src/base/R-4/R-${R_VERSION}.tar.gz" -o /tmp/r.tar.gz && \
+    mkdir /tmp/r && tar -xf /tmp/r.tar.gz -C /tmp/r --strip-components=1 && \
+    cd /tmp/r && \
+    ./configure --prefix=/usr/local/r-${R_VERSION} --with-x=no --enable-R-shlib && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/r /tmp/r.tar.gz && \
+    /usr/local/r-${R_VERSION}/bin/Rscript -e 'options(repos="https://cloud.r-project.org"); install.packages("data.table")'
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 4 — JVM stack
+# ════════════════════════════════════════════════════════════════════════
+
+# OpenJDK 21 LTS (Eclipse Temurin prebuilt)
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) JDK_ARCH=x64 ;; \
+        arm64) JDK_ARCH=aarch64 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    JDK_FILE_VERSION="$(echo "${JDK_VERSION}" | tr '+' '_')" && \
+    curl -fSsL "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-${JDK_VERSION}/OpenJDK21U-jdk_${JDK_ARCH}_linux_hotspot_${JDK_FILE_VERSION}.tar.gz" -o /tmp/jdk.tar.gz && \
+    mkdir -p /usr/local/openjdk-21 && \
+    tar -xf /tmp/jdk.tar.gz -C /usr/local/openjdk-21 --strip-components=1 && \
+    rm /tmp/jdk.tar.gz && \
+    ln -sf /usr/local/openjdk-21/bin/java /usr/local/bin/java && \
+    ln -sf /usr/local/openjdk-21/bin/javac /usr/local/bin/javac && \
+    ln -sf /usr/local/openjdk-21/bin/jar /usr/local/bin/jar
+ENV JAVA_HOME=/usr/local/openjdk-21
+
+# Kotlin (JVM, arch-independent zip)
+RUN set -xe && \
+    curl -fSsL "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" -o /tmp/kotlin.zip && \
+    unzip -q /tmp/kotlin.zip -d /usr/local/kotlin-${KOTLIN_VERSION} && \
+    mv /usr/local/kotlin-${KOTLIN_VERSION}/kotlinc/* /usr/local/kotlin-${KOTLIN_VERSION}/ && \
+    rmdir /usr/local/kotlin-${KOTLIN_VERSION}/kotlinc && \
+    rm /tmp/kotlin.zip
+
+# Scala 3 (JVM, arch-independent)
+RUN set -xe && \
+    curl -fSsL "https://github.com/scala/scala3/releases/download/${SCALA_VERSION}/scala3-${SCALA_VERSION}.tar.gz" -o /tmp/scala.tar.gz && \
+    mkdir -p /usr/local/scala-${SCALA_VERSION} && \
+    tar -xf /tmp/scala.tar.gz -C /usr/local/scala-${SCALA_VERSION} --strip-components=1 && \
+    rm /tmp/scala.tar.gz
+
+# Groovy (JVM)
+RUN set -xe && \
+    curl -fSsL "https://archive.apache.org/dist/groovy/${GROOVY_VERSION}/distribution/apache-groovy-binary-${GROOVY_VERSION}.zip" -o /tmp/groovy.zip && \
+    unzip -q /tmp/groovy.zip -d /usr/local && \
+    rm /tmp/groovy.zip
+
+# Clojure (JVM, jar via official tools tarball)
+RUN set -xe && \
+    mkdir -p /usr/local/clojure-${CLOJURE_VERSION} && \
+    curl -fSsL "https://github.com/clojure/brew-install/releases/download/${CLOJURE_VERSION}/clojure-tools-${CLOJURE_VERSION}.tar.gz" -o /tmp/clojure.tar.gz && \
+    tar -xf /tmp/clojure.tar.gz -C /tmp && \
+    cp /tmp/clojure-tools/clojure-tools-${CLOJURE_VERSION}.jar /usr/local/clojure-${CLOJURE_VERSION}/clojure.jar && \
+    rm -rf /tmp/clojure-tools /tmp/clojure.tar.gz
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 5 — .NET (LTS, ~2-year cadence)
+# ════════════════════════════════════════════════════════════════════════
+
+# .NET 8 SDK (C#, F#) via Microsoft's official install script
+RUN set -xe && \
+    curl -fSsL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
+    bash /tmp/dotnet-install.sh --version ${DOTNET_VERSION} --install-dir /usr/local/dotnet-sdk && \
+    rm /tmp/dotnet-install.sh && \
+    ln -sf /usr/local/dotnet-sdk/dotnet /usr/local/bin/dotnet
+ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
+    DOTNET_NOLOGO=1 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 6 — yearly mainstream compiled (Swift, Go, Rust)
+# ════════════════════════════════════════════════════════════════════════
+
+# Swift
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) SWIFT_PLATFORM=ubuntu2204 ; SWIFT_ARCH= ;; \
+        arm64) SWIFT_PLATFORM=ubuntu2204-aarch64 ; SWIFT_ARCH=-aarch64 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends libpython3-dev libxml2 && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -fSsL "https://download.swift.org/swift-${SWIFT_VERSION}-release/${SWIFT_PLATFORM}/swift-${SWIFT_VERSION}-RELEASE/swift-${SWIFT_VERSION}-RELEASE-ubuntu22.04${SWIFT_ARCH}.tar.gz" -o /tmp/swift.tar.gz && \
+    mkdir -p /usr/local/swift-${SWIFT_VERSION} && \
+    tar -xf /tmp/swift.tar.gz -C /usr/local/swift-${SWIFT_VERSION} --strip-components=2 && \
+    rm /tmp/swift.tar.gz
+
+# Go (prebuilt)
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) GO_ARCH=amd64 ;; \
+        arm64) GO_ARCH=arm64 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -fSsL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
+    mkdir -p /usr/local/go-${GO_VERSION} && \
+    tar -xf /tmp/go.tar.gz -C /usr/local/go-${GO_VERSION} --strip-components=1 && \
+    rm /tmp/go.tar.gz
+
+# Rust (prebuilt static toolchain)
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) RUST_ARCH=x86_64-unknown-linux-gnu ;; \
+        arm64) RUST_ARCH=aarch64-unknown-linux-gnu ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -fSsL "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RUST_ARCH}.tar.gz" -o /tmp/rust.tar.gz && \
+    mkdir /tmp/rust && tar -xf /tmp/rust.tar.gz -C /tmp/rust --strip-components=1 && \
+    cd /tmp/rust && \
+    ./install.sh --prefix=/usr/local/rust-${RUST_VERSION} \
+                 --components=rustc,rust-std-${RUST_ARCH},cargo && \
+    cd / && rm -rf /tmp/rust /tmp/rust.tar.gz
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 7 — yearly mainstream scripting (PHP, Ruby, Python default)
+# ════════════════════════════════════════════════════════════════════════
+
+# PHP (build deps installed inline so they don't pollute earlier layers)
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libonig-dev libzip-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -fSsL "https://www.php.net/distributions/php-${PHP_VERSION}.tar.xz" -o /tmp/php.tar.xz && \
+    mkdir /tmp/php && tar -xf /tmp/php.tar.xz -C /tmp/php --strip-components=1 && \
+    cd /tmp/php && \
+    ./configure --prefix=/usr/local/php-${PHP_VERSION} \
+                --with-openssl --with-curl --with-zlib \
+                --enable-mbstring --with-zip && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/php /tmp/php.tar.xz
+
+# Ruby
+RUN set -xe && \
+    curl -fSsL "https://cache.ruby-lang.org/pub/ruby/${RUBY_VERSION%.*}/ruby-${RUBY_VERSION}.tar.gz" -o /tmp/ruby.tar.gz && \
+    mkdir /tmp/ruby && tar -xf /tmp/ruby.tar.gz -C /tmp/ruby --strip-components=1 && \
+    cd /tmp/ruby && \
+    ./configure \
+        --disable-install-doc \
+        --prefix=/usr/local/ruby-${RUBY_VERSION} && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/ruby /tmp/ruby.tar.gz
+
+# Python 3.13 (default Python; PGO build)
+RUN set -xe && \
+    curl -fSsL "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz" -o /tmp/py.tar.xz && \
+    mkdir /tmp/py && tar -xf /tmp/py.tar.xz -C /tmp/py --strip-components=1 && \
+    cd /tmp/py && \
+    ./configure \
+        --prefix=/usr/local/python-${PYTHON_VERSION} \
+        --enable-optimizations \
+        --with-ensurepip=install && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/py /tmp/py.tar.xz
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 8 — Node + TypeScript (TypeScript split out to isolate npm bumps)
+# ════════════════════════════════════════════════════════════════════════
+
+# Node.js (prebuilt tarball, interpreter only)
+RUN set -xe && \
+    case "${TARGETARCH}" in \
+        amd64) NODE_ARCH=linux-x64 ;; \
+        arm64) NODE_ARCH=linux-arm64 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -fSsL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.xz" -o /tmp/node.tar.xz && \
+    mkdir -p /usr/local/node-${NODE_VERSION} && \
+    tar -xf /tmp/node.tar.xz -C /usr/local/node-${NODE_VERSION} --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    ln -sf /usr/local/node-${NODE_VERSION}/bin/node /usr/local/bin/node && \
+    ln -sf /usr/local/node-${NODE_VERSION}/bin/npm /usr/local/bin/npm && \
+    ln -sf /usr/local/node-${NODE_VERSION}/bin/npx /usr/local/bin/npx
+ENV NODE_PATH=/usr/local/node-${NODE_VERSION}/lib/node_modules
+
+# TypeScript + npm globals (split: bumps independently of Node)
+RUN set -xe && \
+    npm install -g --unsafe-perm \
+        typescript@${TYPESCRIPT_VERSION} \
+        @types/node \
+        acorn acorn-walk && \
+    npm cache clean --force
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 9 — Python 3.12 ML interpreter (split from pip install)
+# ════════════════════════════════════════════════════════════════════════
+
+RUN set -xe && \
+    curl -fSsL "https://www.python.org/ftp/python/${PYTHON_ML_VERSION}/Python-${PYTHON_ML_VERSION}.tar.xz" -o /tmp/py.tar.xz && \
+    mkdir /tmp/py && tar -xf /tmp/py.tar.xz -C /tmp/py --strip-components=1 && \
+    cd /tmp/py && \
+    ./configure \
+        --prefix=/usr/local/python-${PYTHON_ML_VERSION} \
+        --enable-optimizations \
+        --with-ensurepip=install && \
+    make -j"$(nproc)" && make -j"$(nproc)" install && \
+    cd / && rm -rf /tmp/py /tmp/py.tar.xz
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 10 — Newton-specific extras (occasional updates)
+# ════════════════════════════════════════════════════════════════════════
+
+# MARS (MIPS) — asset uses major_minor form: Mars4_5.jar for tag v.4.5.1
+RUN set -xe && \
+    mkdir -p /usr/local/mars && \
+    curl -fSsL "https://github.com/dpetersanderson/MARS/releases/download/v.${MARS_VERSION}/Mars4_5.jar" \
+        -o /usr/local/mars/mars.jar && \
+    chmod 755 /usr/local/mars/mars.jar && \
+    printf '%s\n' '.level = SEVERE' > /usr/local/mars/logging.properties
+
+# nand2tetris-web-ide CLI (Newton-owned source — frequent code updates)
+# --force on npm install bypasses the package.json's strict node:20.9.0 pin.
+RUN set -eux; \
+    cd /usr/local/lib && \
+    git clone ${NAND2TETRIS_REPO} nand2tetris-web-ide && \
+    cd nand2tetris-web-ide && \
+    npm install --force && \
+    npm run build && \
+    npm install -g --force ./cli && \
+    ln -sf /usr/local/node-${NODE_VERSION}/bin/nand2tetris /usr/local/bin/nand2tetris
+
+# ════════════════════════════════════════════════════════════════════════
+# Tier 11 — Python 3.12 ML pip install (BOTTOM, most volatile)
+#
+# Course teams add packages here.  This is the one place where
+# "edit-in-place" is the recommended pattern: only this layer rebuilds.
+# Alternatively, append a new RUN below this one for additive package adds.
+# ════════════════════════════════════════════════════════════════════════
+
+RUN /usr/local/python-${PYTHON_ML_VERSION}/bin/pip3 install --no-cache-dir \
+        numpy \
+        pandas \
+        scikit-learn \
+        scipy \
+        matplotlib \
+        seaborn \
+        statsmodels \
+        sympy \
+        mlxtend \
+        xgboost \
+        Pillow \
+        bs4 \
+        gspread \
+        urllib3 \
+        requests \
+        pytest \
+        qiskit \
+        qiskit-aer \
+        qutip
+
+# ════════════════════════════════════════════════════════════════════════
+# Final wiring
+# ════════════════════════════════════════════════════════════════════════
+
+ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
+      org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
+      org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised)" \
+      org.opencontainers.image.version="0.26"
