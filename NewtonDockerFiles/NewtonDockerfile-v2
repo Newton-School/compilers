@@ -259,8 +259,16 @@ RUN set -xe && \
 # name is plain "Binaries-Linux" without spaces. Older Newton Dockerfile
 # revisions used the flat URL with FBC 1.07.1 and worked; for 1.10.1 we
 # need this updated path.
+#
+# FBC 1.10.1's `fbc` binary is linked against libtinfo.so.5 with the
+# NCURSES_TINFO_5.0.19991023 symbol version, which bookworm's libtinfo6
+# does not provide. Install the bullseye libtinfo5 .deb directly so the
+# binary can resolve at runtime.
 RUN set -xe && \
     if [ "${TARGETARCH}" = "amd64" ]; then \
+        curl -fSsL "http://archive.debian.org/debian/pool/main/n/ncurses/libtinfo5_6.2+20201114-2+deb11u2_amd64.deb" -o /tmp/libtinfo5.deb && \
+        dpkg -i /tmp/libtinfo5.deb && \
+        rm /tmp/libtinfo5.deb && \
         curl -fSsL "https://downloads.sourceforge.net/project/fbc/FreeBASIC-${FBC_VERSION}/Binaries-Linux/FreeBASIC-${FBC_VERSION}-linux-x86_64.tar.gz" -o /tmp/fbc.tar.gz && \
         mkdir -p /usr/local/fbc-${FBC_VERSION} && \
         tar -xf /tmp/fbc.tar.gz -C /usr/local/fbc-${FBC_VERSION} --strip-components=1 && \
