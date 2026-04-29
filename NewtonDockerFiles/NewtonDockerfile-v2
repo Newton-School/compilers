@@ -252,10 +252,16 @@ RUN set -xe && \
     make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/sqlite /tmp/sqlite.tar.gz
 
-# FreeBASIC (amd64 prebuilt; arm64 not officially supported - skipped)
+# FreeBASIC (amd64 prebuilt; arm64 not officially supported - skipped).
+# As of FreeBASIC 1.10.x, SourceForge moved the Linux binaries into a
+# per-version subdirectory (FreeBASIC-${VERSION}/Binaries-Linux/) rather
+# than the older flat /Binaries%20-%20Linux/ layout — and the directory
+# name is plain "Binaries-Linux" without spaces. Older Newton Dockerfile
+# revisions used the flat URL with FBC 1.07.1 and worked; for 1.10.1 we
+# need this updated path.
 RUN set -xe && \
     if [ "${TARGETARCH}" = "amd64" ]; then \
-        curl -fSsL "https://downloads.sourceforge.net/project/fbc/Binaries%20-%20Linux/FreeBASIC-${FBC_VERSION}-linux-x86_64.tar.gz" -o /tmp/fbc.tar.gz && \
+        curl -fSsL "https://downloads.sourceforge.net/project/fbc/FreeBASIC-${FBC_VERSION}/Binaries-Linux/FreeBASIC-${FBC_VERSION}-linux-x86_64.tar.gz" -o /tmp/fbc.tar.gz && \
         mkdir -p /usr/local/fbc-${FBC_VERSION} && \
         tar -xf /tmp/fbc.tar.gz -C /usr/local/fbc-${FBC_VERSION} --strip-components=1 && \
         rm /tmp/fbc.tar.gz ; \
