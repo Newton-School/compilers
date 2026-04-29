@@ -5,10 +5,15 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.26-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.27-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
+#
+# 0.27 trim: dropped tests for Clang, Fortran, Kotlin, Scala, Groovy,
+# Clojure, PHP, Lua, Perl, Swift, Haskell, OCaml, Erlang, Elixir,
+# Pascal, SBCL, D, COBOL, GNU Prolog, .NET — all archived in judge0
+# 0.59+ for low usage.
 #
 set -u
 
@@ -72,14 +77,13 @@ if [[ -n "$BASH_DIR" ]]; then
 else skip "Bash" "no /usr/local/bash-*"; fi
 
 # ────────────────────────────────────────────────────────────────────────
-section "C / C++ / Fortran"
+section "C / C++"
 # ────────────────────────────────────────────────────────────────────────
 GCC9_DIR="$(resolve '/usr/local/gcc-9.*')"
 GCC_DIR="$(resolve '/usr/local/gcc-1[0-9].*' )"
 
 WRITE_C="printf '%s\n' '#include <stdio.h>' 'int main(void) { printf(\"$EXPECTED\\\\n\"); return 0; }' > main.c"
 WRITE_CPP="printf '%s\n' '#include <iostream>' 'int main() { std::cout << \"$EXPECTED\" << std::endl; return 0; }' > main.cpp"
-WRITE_F90="printf '%s\n' 'program hello' '  print *, \"$EXPECTED\"' 'end program hello' > main.f90"
 
 if [[ -n "$GCC9_DIR" ]]; then
     t "C (GCC 9.x)" gcc9c "$WRITE_C && $GCC9_DIR/bin/gcc main.c -o a.out && ./a.out"
@@ -89,16 +93,10 @@ else skip "GCC 9.x" "not installed"; fi
 if [[ -n "$GCC_DIR" ]]; then
     t "C (GCC 14.x)" gccc "$WRITE_C && $GCC_DIR/bin/gcc main.c -o a.out && ./a.out"
     t "C++ (GCC 14.x)" gcccpp "$WRITE_CPP && $GCC_DIR/bin/g++ main.cpp -o a.out && LD_LIBRARY_PATH=$GCC_DIR/lib64 ./a.out"
-    t "Fortran (gfortran 14.x)" fortran "$WRITE_F90 && $GCC_DIR/bin/gfortran main.f90 -o a.out && LD_LIBRARY_PATH=$GCC_DIR/lib64 ./a.out"
 else skip "GCC modern" "not installed"; fi
 
-if command -v clang >/dev/null; then
-    t "C (Clang)" clangc "$WRITE_C && clang main.c -o a.out && ./a.out"
-    t "C++ (Clang)" clangcpp "$WRITE_CPP && clang++ main.cpp -o a.out && ./a.out"
-else skip "Clang" "not on PATH"; fi
-
 # ────────────────────────────────────────────────────────────────────────
-section "JVM languages"
+section "JVM"
 # ────────────────────────────────────────────────────────────────────────
 JDK_DIR="$(resolve '/usr/local/openjdk-*')"
 if [[ -n "$JDK_DIR" ]]; then
@@ -108,44 +106,6 @@ public class Main { public static void main(String[] a) { System.out.println(\"$
 EOF
         $JDK_DIR/bin/javac Main.java && $JDK_DIR/bin/java Main"
 else skip "Java" "no JDK found"; fi
-
-KOTLIN_DIR="$(resolve '/usr/local/kotlin-*')"
-if [[ -n "$KOTLIN_DIR" && -n "$JDK_DIR" ]]; then
-    t "Kotlin" kotlin "
-        cat > Main.kt <<EOF
-fun main() { println(\"$EXPECTED\") }
-EOF
-        $KOTLIN_DIR/bin/kotlinc Main.kt -include-runtime -d main.jar 2>/dev/null && \
-        $JDK_DIR/bin/java -jar main.jar"
-else skip "Kotlin" "kotlinc/JDK missing"; fi
-
-SCALA_DIR="$(resolve '/usr/local/scala-*')"
-if [[ -n "$SCALA_DIR" ]]; then
-    t "Scala 3" scala "
-        cat > Main.scala <<EOF
-@main def hello() = println(\"$EXPECTED\")
-EOF
-        $SCALA_DIR/bin/scala-cli run Main.scala 2>/dev/null \
-            || $SCALA_DIR/bin/scala Main.scala"
-else skip "Scala" "no scala dir"; fi
-
-GROOVY_DIR="$(resolve '/usr/local/groovy-*')"
-if [[ -n "$GROOVY_DIR" ]]; then
-    t "Groovy" groovy "
-        cat > script.groovy <<EOF
-println '$EXPECTED'
-EOF
-        $GROOVY_DIR/bin/groovy script.groovy"
-else skip "Groovy" "no groovy dir"; fi
-
-CLOJURE_DIR="$(resolve '/usr/local/clojure-*')"
-if [[ -n "$CLOJURE_DIR" && -n "$JDK_DIR" ]]; then
-    t "Clojure" clojure "
-        cat > main.clj <<EOF
-(println \"$EXPECTED\")
-EOF
-        $JDK_DIR/bin/java -cp $CLOJURE_DIR/clojure.jar clojure.main main.clj"
-else skip "Clojure" "missing deps"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Scripting / interpreted"
@@ -184,28 +144,8 @@ if [[ -n "$NODE_DIR" ]]; then
         $NODE_DIR/bin/tsc s.ts && $NODE_DIR/bin/node s.js"
 else skip "Node/TS" "not installed"; fi
 
-PHP_DIR="$(resolve '/usr/local/php-*')"
-if [[ -n "$PHP_DIR" ]]; then
-    t "PHP" php "
-        echo '<?php echo \"$EXPECTED\\n\";' > s.php
-        $PHP_DIR/bin/php s.php"
-else skip "PHP" "not installed"; fi
-
-LUA_DIR="$(resolve '/usr/local/lua-*')"
-if [[ -n "$LUA_DIR" ]]; then
-    t "Lua" lua "
-        echo 'print(\"$EXPECTED\")' > s.lua
-        $LUA_DIR/bin/lua s.lua"
-else skip "Lua" "not installed"; fi
-
-if command -v perl >/dev/null; then
-    t "Perl" perl "
-        echo 'print \"$EXPECTED\\n\";' > s.pl
-        perl s.pl"
-else skip "Perl" "not on PATH"; fi
-
 # ────────────────────────────────────────────────────────────────────────
-section "Compiled (non-JVM)"
+section "Compiled"
 # ────────────────────────────────────────────────────────────────────────
 GO_DIR="$(resolve '/usr/local/go-*')"
 if [[ -n "$GO_DIR" ]]; then
@@ -227,131 +167,12 @@ EOF
         $RUST_DIR/bin/rustc main.rs -o main && ./main"
 else skip "Rust" "not installed"; fi
 
-SWIFT_DIR="$(resolve '/usr/local/swift-*')"
-if [[ -n "$SWIFT_DIR" ]]; then
-    t "Swift" swift "
-        cat > Main.swift <<EOF
-print(\"$EXPECTED\")
-EOF
-        $SWIFT_DIR/bin/swiftc Main.swift -o Main && ./Main"
-else skip "Swift" "not installed"; fi
-
-GHC_DIR="$(resolve '/usr/local/ghc-*')"
-if [[ -n "$GHC_DIR" ]]; then
-    t "Haskell GHC" haskell "
-        cat > main.hs <<EOF
-main = putStrLn \"$EXPECTED\"
-EOF
-        $GHC_DIR/bin/ghc -dynamic main.hs -o main 2>/dev/null && ./main"
-else skip "Haskell" "not installed"; fi
-
-OCAML_DIR="$(resolve '/usr/local/ocaml-*')"
-if [[ -n "$OCAML_DIR" ]]; then
-    t "OCaml" ocaml "
-        cat > main.ml <<EOF
-let () = print_endline \"$EXPECTED\"
-EOF
-        $OCAML_DIR/bin/ocamlc main.ml -o main && ./main"
-else skip "OCaml" "not installed"; fi
-
-ERL_DIR="$(resolve '/usr/local/erlang-*')"
-if [[ -n "$ERL_DIR" ]]; then
-    t "Erlang escript" erlang "
-        cat > main.erl <<EOF
-#!/usr/bin/env escript
-main(_) -> io:format(\"$EXPECTED~n\").
-EOF
-        $ERL_DIR/bin/escript main.erl"
-else skip "Erlang" "not installed"; fi
-
-ELIXIR_DIR="$(resolve '/usr/local/elixir-*')"
-if [[ -n "$ELIXIR_DIR" && -n "$ERL_DIR" ]]; then
-    t "Elixir" elixir "
-        echo 'IO.puts(\"$EXPECTED\")' > s.exs
-        PATH=$ERL_DIR/bin:$ELIXIR_DIR/bin:\$PATH $ELIXIR_DIR/bin/elixir s.exs"
-else skip "Elixir" "missing deps"; fi
-
 R_DIR="$(resolve '/usr/local/r-*')"
 if [[ -n "$R_DIR" ]]; then
     t "R" r "
         echo 'cat(\"$EXPECTED\\n\")' > s.r
         $R_DIR/bin/Rscript s.r"
 else skip "R" "not installed"; fi
-
-FPC_DIR="$(resolve '/usr/local/fpc-*')"
-if [[ -n "$FPC_DIR" && -x "$FPC_DIR/bin/fpc" ]]; then
-    t "Free Pascal" pascal "
-        cat > main.pas <<EOF
-program hello;
-begin
-  writeln('$EXPECTED');
-end.
-EOF
-        $FPC_DIR/bin/fpc main.pas >/dev/null && ./main"
-else skip "Pascal" "not installed"; fi
-
-SBCL_DIR="$(resolve '/usr/local/sbcl-*')"
-if [[ -n "$SBCL_DIR" ]]; then
-    t "Common Lisp (SBCL)" sbcl "
-        echo '(write-line \"$EXPECTED\")' > s.lisp
-        SBCL_HOME=$SBCL_DIR/lib/sbcl $SBCL_DIR/bin/sbcl --script s.lisp"
-else skip "SBCL" "not installed"; fi
-
-D_DIR="$(resolve '/usr/local/d-*')"
-if [[ -n "$D_DIR" ]]; then
-    DMD_BIN=""
-    [[ -x "$D_DIR/linux/bin64/dmd" ]] && DMD_BIN="$D_DIR/linux/bin64/dmd"
-    [[ -z "$DMD_BIN" && -x "$D_DIR/bin/ldc2" ]] && DMD_BIN="$D_DIR/bin/ldc2"
-    if [[ -n "$DMD_BIN" ]]; then
-        t "D" dlang "
-            cat > main.d <<EOF
-import std.stdio;
-void main() { writeln(\"$EXPECTED\"); }
-EOF
-            $DMD_BIN main.d -of=main && ./main"
-    else skip "D" "no dmd/ldc2 binary"; fi
-else skip "D" "not installed"; fi
-
-COBOL_DIR="$(resolve '/usr/local/gnucobol-*')"
-if [[ -n "$COBOL_DIR" ]]; then
-    t "COBOL" cobol "
-        cat > main.cob <<EOF
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. Hello.
-       PROCEDURE DIVISION.
-           DISPLAY \"$EXPECTED\".
-           STOP RUN.
-EOF
-        $COBOL_DIR/bin/cobc -x main.cob -o main && LD_LIBRARY_PATH=$COBOL_DIR/lib ./main"
-else skip "COBOL" "not installed"; fi
-
-GPROLOG_DIR="$(resolve '/usr/local/gprolog-*')"
-if [[ -n "$GPROLOG_DIR" ]]; then
-    GPLC="$(ls -1 $GPROLOG_DIR/bin/gplc $GPROLOG_DIR/gprolog-*/bin/gplc 2>/dev/null | head -n1)"
-    if [[ -n "$GPLC" ]]; then
-        t "GNU Prolog" prolog "
-            cat > main.pro <<EOF
-:- initialization(main).
-main :- write('$EXPECTED'), nl.
-EOF
-            PATH=\$(dirname $GPLC):\$PATH $GPLC --no-top-level main.pro && ./main"
-    else skip "GNU Prolog" "no gplc"; fi
-else skip "GNU Prolog" "not installed"; fi
-
-# ────────────────────────────────────────────────────────────────────────
-section ".NET (C#, F#)"
-# ────────────────────────────────────────────────────────────────────────
-if command -v dotnet >/dev/null; then
-    t "C# (.NET 8)" csharp "
-        mkdir cs && cd cs && \
-        dotnet new console -n Hello --force >/dev/null && \
-        cd Hello && \
-        printf 'System.Console.WriteLine(\"%s\");\\n' '$EXPECTED' > Program.cs && \
-        dotnet run --nologo 2>&1 | grep -v 'Welcome\\|Telemetry\\|\\[\\|---\\|build succeeded' | head -1"
-    t "F# fsi" fsharp "
-        printf 'printfn \"%s\"\\n' '$EXPECTED' > s.fsx && \
-        dotnet fsi s.fsx"
-else skip ".NET" "no dotnet on PATH"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Architecture-specific / Newton extras"

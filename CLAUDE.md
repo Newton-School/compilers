@@ -2,8 +2,40 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.26+` (Newton's
-modernised artifact, which is what `Newton-School/judge0` actually consumes).
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.27+` (Newton's
+modernised + trimmed artifact, which is what `Newton-School/judge0` actually
+consumes).
+
+## What changed in 0.27 (vs 0.26)
+
+Aggressive trim driven by prod usage data: the languages that students
+weren't actually using were ~6-7 GB of the image. Dropped toolchains:
+
+- **Clang/LLVM** (C/C++/Obj-C apt path) — Clang ids 75/76/79
+- **.NET 8 SDK + dotnet-script** — C# (51) and F# (87)
+- **Haskell GHC** (~3 GB by itself) — id 61
+- **Swift** — id 83
+- **Erlang/OTP + Elixir** — ids 58, 57
+- **OCaml** — id 65
+- **Octave** — id 66
+- **Free Pascal (FPC)** — id 67
+- **GnuCOBOL** — id 77
+- **GNU Prolog** — id 69
+- **SBCL** (Common Lisp) — id 55
+- **DMD/LDC** (D) — id 56
+- **Lua** — id 64
+- **PHP** — id 68
+- **Kotlin** — id 78
+- **Scala 3** — id 81
+- **Groovy** — id 88
+- **Clojure** — id 86
+
+Also: `gfortran` removed from base apt and `--enable-languages=c,c++` (no
+fortran) on both GCC builds, since Fortran (id 59) was archived.
+
+What's still in: GCC 9.5 + 14.2 (C/C++), Java 21, Python 3.13 + 3.12 ML,
+Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
+NASM, FreeBASIC, SQLite, MARS, nand2tetris, isolate v2.
 
 ## Repo layout you will care about
 
@@ -55,13 +87,13 @@ additive package changes, append a new RUN at the bottom.
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.26-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.27-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.26 \
+  -t newtonschool/judge0-newton-compiler:0.27 \
   --load .
 ```
 
@@ -74,12 +106,13 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.26-arm64 \
+  newtonschool/judge0-newton-compiler:0.27-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected: 40 PASS, 0 FAIL, 2 SKIP (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). On amd64 those two activate, so 42 PASS.
+Expected (post 0.27 trim): 17 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and
+FreeBASIC are amd64-only upstream and skip on arm64). 19 PASS / 0 FAIL /
+0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
@@ -121,8 +154,9 @@ If this isn't green, DON'T tag/push.
 ## Image is published as
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
-- Tags currently published: `0.25` (legacy production), `0.26-arm64`
-- Phase-2 production tag: `0.26` (amd64) — produced on EC2
+- Tags currently published: `0.25` (legacy), `0.26` (Phase 2 modernised),
+  `0.27` (Phase 3 trimmed — current target)
+- Phase-3 production tag: `0.27` (amd64) — produced on EC2
 
 ## Production deploys
 
