@@ -276,7 +276,7 @@ RUN set -xe && \
             curl -fSsL "https://downloads.sourceforge.net/project/freepascal/Linux/${FPC_VERSION}/fpc-${FPC_VERSION}.x86_64-linux.tar" -o /tmp/fpc.tar && \
             mkdir /tmp/fpc && tar -xf /tmp/fpc.tar -C /tmp/fpc --strip-components=1 && \
             cd /tmp/fpc && \
-            echo "/usr/local/fpc-${FPC_VERSION}" | sh install.sh && \
+            echo "/usr/local/fpc-${FPC_VERSION}" | bash install.sh && \
             cd / && rm -rf /tmp/fpc /tmp/fpc.tar \
             ;; \
         arm64) \
