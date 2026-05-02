@@ -165,8 +165,12 @@ If this isn't green, DON'T tag/push.
 5. **MARS jar URL uses major_minor only.** The release tag is `v.4.5.1`
    but the asset is `Mars4_5.jar` (no trailing `_1`). Don't try to compute
    the filename from the version string.
-6. **Bash mirror at `ftpmirror.gnu.org/bash/` returns 403.** Use
-   `ftp.gnu.org/gnu/bash/` directly.
+6. **`ftpmirror.gnu.org` returns transient 403s from inside buildkit.**
+   Bash hit this in 0.26; GCC 9.5 hit the same in 0.28 (a build that had
+   been working previously failed on rebuild because the auto-redirecting
+   mirror sent buildkit to a rate-limited downstream). Always use
+   `ftp.gnu.org/gnu/<project>/` directly for any GNU source — applies to
+   bash, gcc, gnucobol, octave, etc.
 7. **SBCL has no upstream arm64 Linux binary.** arm64 falls back to
    bookworm `apt sbcl` (2.2.x); amd64 keeps the SourceForge binary
    (2.4.10).

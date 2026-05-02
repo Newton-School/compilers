@@ -124,10 +124,14 @@ RUN set -xe && \
     cd / && rm -rf /tmp/isolate
 ENV BOX_ROOT=/var/local/lib/isolate
 
-# GCC 9.5.0 — frozen forever (preserves GCC-9-era student-code compatibility)
+# GCC 9.5.0 — frozen forever (preserves GCC-9-era student-code compatibility).
+# Source pulled from ftp.gnu.org directly, NOT ftpmirror.gnu.org — the
+# auto-redirecting mirror occasionally serves a 403 from inside the
+# buildkit network (same failure mode already documented for Bash in
+# CLAUDE.md pitfall #6).
 ENV GCC_LEGACY_VERSION=9.5.0
 RUN set -xe && \
-    curl -fSsL "https://ftpmirror.gnu.org/gcc/gcc-${GCC_LEGACY_VERSION}/gcc-${GCC_LEGACY_VERSION}.tar.gz" -o /tmp/gcc.tar.gz && \
+    curl -fSsL "https://ftp.gnu.org/gnu/gcc/gcc-${GCC_LEGACY_VERSION}/gcc-${GCC_LEGACY_VERSION}.tar.gz" -o /tmp/gcc.tar.gz && \
     mkdir -p /tmp/gcc && tar -xf /tmp/gcc.tar.gz -C /tmp/gcc --strip-components=1 && \
     rm /tmp/gcc.tar.gz && \
     cd /tmp/gcc && \
