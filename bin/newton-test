@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+#
+# Newton-owned smoke test for the v2 compilers image.
+#
+# Runs a tiny "Hello, Newton!" program for every language and reports
+# PASS/FAIL. Designed to be run inside the built container:
+#
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.28-arm64 \
+#     bash /work/bin/newton-test
+#
+# Exits non-zero if any language fails, and prints a summary.
+#
+# 0.27 trim: dropped tests for Clang, Fortran, Kotlin, Scala, Groovy,
+# Clojure, PHP, Lua, Perl, Swift, Haskell, OCaml, Erlang, Elixir,
+# Pascal, SBCL, D, COBOL, GNU Prolog, .NET — all archived in judge0
+# 0.59+ for low usage.
+# 0.28: dropped GCC 14 C/C++ tests (only GCC 9.5 retained); re-added
+# Kotlin and Scala tests for the re-introduced course tracks.
+#
+set -u
+
+EXPECTED="Hello, Newton!"
+PASS=0
+FAIL=0
+SKIP=0
+FAILED_LANGS=()
+SKIPPED_LANGS=()
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Resolve a versioned install dir under /usr/local by glob; first match wins.
+resolve() {
+    local pattern="$1"
+    local match
+    match="$(ls -d ${pattern} 2>/dev/null | head -n1)"
+    [[ -n "$match" && -d "$match" ]] && echo "$match"
+}
+
+ARCH="$(uname -m)"
+
+# t <name> <work_subdir> <body>
+#   body should produce stdout. Compared against $EXPECTED.
+t() {
+    local name="$1" sub="$2" body="$3"
+    local d="$WORK/$sub"
+    mkdir -p "$d"
+    pushd "$d" >/dev/null
+    local out
+    out="$(bash -c "$body" 2>&1)"
+    local rc=$?
+    popd >/dev/null
+    if [[ $rc -eq 0 && "$out" == *"$EXPECTED"* ]]; then
+        printf "  \033[32mPASS\033[0m  %s\n" "$name"
+        PASS=$((PASS+1))
+    else
+        printf "  \033[31mFAIL\033[0m  %s  (rc=%d)\n%s\n" "$name" "$rc" "$(echo "$out" | sed 's/^/        /')"
+        FAIL=$((FAIL+1))
+        FAILED_LANGS+=("$name")
+    fi
+}
+
+skip() {
+    local name="$1" reason="$2"
+    printf "  \033[33mSKIP\033[0m  %s  (%s)\n" "$name" "$reason"
+    SKIP=$((SKIP+1))
+    SKIPPED_LANGS+=("$name ($reason)")
+}
+
+section() { printf "\n\033[1m== %s ==\033[0m\n" "$1"; }
+
+# ────────────────────────────────────────────────────────────────────────
+section "Shell / utilities"
+# ────────────────────────────────────────────────────────────────────────
+BASH_DIR="$(resolve '/usr/local/bash-*')"
+if [[ -n "$BASH_DIR" ]]; then
+    t "Bash 5.2" bash \
+      "echo 'echo $EXPECTED' > s.sh && '$BASH_DIR/bin/bash' s.sh"
+else skip "Bash" "no /usr/local/bash-*"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "C / C++"
+# ────────────────────────────────────────────────────────────────────────
+GCC9_DIR="$(resolve '/usr/local/gcc-9.*')"
+
+WRITE_C="printf '%s\n' '#include <stdio.h>' 'int main(void) { printf(\"$EXPECTED\\\\n\"); return 0; }' > main.c"
+WRITE_CPP="printf '%s\n' '#include <iostream>' 'int main() { std::cout << \"$EXPECTED\" << std::endl; return 0; }' > main.cpp"
+
+if [[ -n "$GCC9_DIR" ]]; then
+    t "C (GCC 9.x)" gcc9c "$WRITE_C && $GCC9_DIR/bin/gcc main.c -o a.out && ./a.out"
+    t "C++ (GCC 9.x)" gcc9cpp "$WRITE_CPP && $GCC9_DIR/bin/g++ main.cpp -o a.out && LD_LIBRARY_PATH=$GCC9_DIR/lib64 ./a.out"
+else skip "GCC 9.x" "not installed"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "JVM"
+# ────────────────────────────────────────────────────────────────────────
+JDK_DIR="$(resolve '/usr/local/openjdk-*')"
+if [[ -n "$JDK_DIR" ]]; then
+    t "Java (OpenJDK 21)" java "
+        cat > Main.java <<EOF
+public class Main { public static void main(String[] a) { System.out.println(\"$EXPECTED\"); } }
+EOF
+        $JDK_DIR/bin/javac Main.java && $JDK_DIR/bin/java Main"
+else skip "Java" "no JDK found"; fi
+
+KOTLIN_DIR="$(resolve '/usr/local/kotlin-*')"
+if [[ -n "$KOTLIN_DIR" && -n "$JDK_DIR" ]]; then
+    t "Kotlin" kotlin "
+        cat > Main.kt <<EOF
+fun main() { println(\"$EXPECTED\") }
+EOF
+        $KOTLIN_DIR/bin/kotlinc Main.kt -include-runtime -d Main.jar 2>/dev/null && \
+        $JDK_DIR/bin/java -jar Main.jar"
+else skip "Kotlin" "kotlinc or JDK missing"; fi
+
+# Scala 3.5+ replaced the legacy `scala` runner with a scala-cli launcher
+# that expects sources, not classnames — so we compile with scalac and run
+# directly via java with the Scala stdlib jars on the classpath. This also
+# matches what judge0's run_cmd will invoke in production.
+SCALA_DIR="$(resolve '/usr/local/scala-*')"
+if [[ -n "$SCALA_DIR" && -n "$JDK_DIR" ]]; then
+    t "Scala" scala "
+        cat > Main.scala <<EOF
+object Main { def main(args: Array[String]): Unit = println(\"$EXPECTED\") }
+EOF
+        $SCALA_DIR/bin/scalac Main.scala 2>/dev/null && \
+        $JDK_DIR/bin/java -cp \"$SCALA_DIR/lib/*:.\" Main"
+else skip "Scala" "scalac or JDK missing"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Scripting / interpreted"
+# ────────────────────────────────────────────────────────────────────────
+PY_DIR="$(resolve '/usr/local/python-3.1[3-9]*')"
+PY_ML_DIR="$(resolve '/usr/local/python-3.12*')"
+
+if [[ -n "$PY_DIR" ]]; then
+    t "Python 3.13" py3 "
+        echo 'print(\"$EXPECTED\")' > s.py
+        $PY_DIR/bin/python3 s.py"
+else skip "Python 3.13" "not installed"; fi
+
+if [[ -n "$PY_ML_DIR" ]]; then
+    t "Python 3.12 ML (interpreter)" pyml "
+        echo 'print(\"$EXPECTED\")' > s.py
+        $PY_ML_DIR/bin/python3 s.py"
+    t "Python 3.12 ML (numpy import)" pymlnumpy "
+        $PY_ML_DIR/bin/python3 -c 'import numpy; print(\"$EXPECTED\")'"
+else skip "Python ML" "not installed"; fi
+
+RUBY_DIR="$(resolve '/usr/local/ruby-*')"
+if [[ -n "$RUBY_DIR" ]]; then
+    t "Ruby" ruby "
+        echo 'puts \"$EXPECTED\"' > s.rb
+        $RUBY_DIR/bin/ruby s.rb"
+else skip "Ruby" "not installed"; fi
+
+NODE_DIR="$(resolve '/usr/local/node-*')"
+if [[ -n "$NODE_DIR" ]]; then
+    t "Node.js" node "
+        echo 'console.log(\"$EXPECTED\")' > s.js
+        $NODE_DIR/bin/node s.js"
+    t "TypeScript" ts "
+        echo 'console.log(\"$EXPECTED\")' > s.ts
+        $NODE_DIR/bin/tsc s.ts && $NODE_DIR/bin/node s.js"
+else skip "Node/TS" "not installed"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Compiled"
+# ────────────────────────────────────────────────────────────────────────
+GO_DIR="$(resolve '/usr/local/go-*')"
+if [[ -n "$GO_DIR" ]]; then
+    t "Go" go "
+        cat > main.go <<EOF
+package main
+import \"fmt\"
+func main() { fmt.Println(\"$EXPECTED\") }
+EOF
+        GOCACHE=/tmp/.cache/go-build $GO_DIR/bin/go build -o main main.go && ./main"
+else skip "Go" "not installed"; fi
+
+RUST_DIR="$(resolve '/usr/local/rust-*')"
+if [[ -n "$RUST_DIR" ]]; then
+    t "Rust" rust "
+        cat > main.rs <<EOF
+fn main() { println!(\"$EXPECTED\"); }
+EOF
+        $RUST_DIR/bin/rustc main.rs -o main && ./main"
+else skip "Rust" "not installed"; fi
+
+R_DIR="$(resolve '/usr/local/r-*')"
+if [[ -n "$R_DIR" ]]; then
+    t "R" r "
+        echo 'cat(\"$EXPECTED\\n\")' > s.r
+        $R_DIR/bin/Rscript s.r"
+else skip "R" "not installed"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Architecture-specific / Newton extras"
+# ────────────────────────────────────────────────────────────────────────
+NASM_DIR="$(resolve '/usr/local/nasm-*')"
+if [[ "$ARCH" == "x86_64" && -n "$NASM_DIR" ]]; then
+    t "NASM (x86_64)" nasm "
+        cat > main.asm <<'EOF'
+section .data
+    msg db \"$EXPECTED\", 10
+    len equ \$ - msg
+section .text
+global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, msg
+    mov rdx, len
+    syscall
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+EOF
+        $NASM_DIR/bin/nasm -f elf64 main.asm -o main.o && \
+        ld main.o -o main && ./main"
+else skip "NASM" "arch=$ARCH (amd64-only)"; fi
+
+if [[ "$ARCH" == "x86_64" ]]; then
+    FBC_DIR="$(resolve '/usr/local/fbc-*')"
+    if [[ -n "$FBC_DIR" ]]; then
+        t "FreeBASIC" fbc "
+            echo 'print \"$EXPECTED\"' > main.bas
+            $FBC_DIR/bin/fbc main.bas -x main && ./main"
+    else skip "FreeBASIC" "not installed"; fi
+else skip "FreeBASIC" "arch=$ARCH (amd64-only upstream)"; fi
+
+if [[ -f /usr/local/mars/mars.jar && -n "$JDK_DIR" ]]; then
+    if [[ "$ARCH" == "x86_64" || "$ARCH" == "aarch64" ]]; then
+        # MARS is a JAR - architecture-independent. Just check it loads.
+        out="$($JDK_DIR/bin/java -jar /usr/local/mars/mars.jar h 2>&1 | head -1)"
+        if [[ -n "$out" ]]; then
+            printf "  \033[32mPASS\033[0m  MARS (MIPS) jar loads\n"
+            PASS=$((PASS+1))
+        else
+            printf "  \033[31mFAIL\033[0m  MARS\n"
+            FAIL=$((FAIL+1)); FAILED_LANGS+=("MARS")
+        fi
+    fi
+else skip "MARS" "jar or JDK missing"; fi
+
+if command -v nand2tetris >/dev/null; then
+    out="$(nand2tetris --help 2>&1 | head -1)"
+    if [[ -n "$out" ]]; then
+        printf "  \033[32mPASS\033[0m  nand2tetris CLI loads\n"
+        PASS=$((PASS+1))
+    else
+        printf "  \033[31mFAIL\033[0m  nand2tetris\n"
+        FAIL=$((FAIL+1)); FAILED_LANGS+=("nand2tetris")
+    fi
+else skip "nand2tetris" "not installed"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Sandbox"
+# ────────────────────────────────────────────────────────────────────────
+if command -v isolate >/dev/null; then
+    out="$(isolate --version 2>&1 | head -1)"
+    if [[ "$out" == *"isolator 2."* || "$out" == *"isolate 2."* ]]; then
+        printf "  \033[32mPASS\033[0m  isolate v2  (%s)\n" "$out"
+        PASS=$((PASS+1))
+    else
+        printf "  \033[31mFAIL\033[0m  isolate version unexpected: %s\n" "$out"
+        FAIL=$((FAIL+1)); FAILED_LANGS+=("isolate")
+    fi
+else skip "isolate" "not on PATH"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+echo
+printf "\033[1mSummary:\033[0m  \033[32m%d passed\033[0m, \033[31m%d failed\033[0m, \033[33m%d skipped\033[0m\n" \
+    "$PASS" "$FAIL" "$SKIP"
+if (( FAIL > 0 )); then
+    printf "\nFailed: %s\n" "${FAILED_LANGS[*]}"
+fi
+if (( SKIP > 0 )); then
+    printf "\nSkipped:\n"
+    for s in "${SKIPPED_LANGS[@]}"; do printf "  - %s\n" "$s"; done
+fi
+
+(( FAIL == 0 ))
