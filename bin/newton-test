@@ -104,24 +104,28 @@ EOF
 else skip "Java" "no JDK found"; fi
 
 KOTLIN_DIR="$(resolve '/usr/local/kotlin-*')"
-if [[ -n "$KOTLIN_DIR" ]]; then
+if [[ -n "$KOTLIN_DIR" && -n "$JDK_DIR" ]]; then
     t "Kotlin" kotlin "
         cat > Main.kt <<EOF
 fun main() { println(\"$EXPECTED\") }
 EOF
         $KOTLIN_DIR/bin/kotlinc Main.kt -include-runtime -d Main.jar 2>/dev/null && \
         $JDK_DIR/bin/java -jar Main.jar"
-else skip "Kotlin" "not installed"; fi
+else skip "Kotlin" "kotlinc or JDK missing"; fi
 
+# Scala 3.5+ replaced the legacy `scala` runner with a scala-cli launcher
+# that expects sources, not classnames — so we compile with scalac and run
+# directly via java with the Scala stdlib jars on the classpath. This also
+# matches what judge0's run_cmd will invoke in production.
 SCALA_DIR="$(resolve '/usr/local/scala-*')"
-if [[ -n "$SCALA_DIR" ]]; then
+if [[ -n "$SCALA_DIR" && -n "$JDK_DIR" ]]; then
     t "Scala" scala "
         cat > Main.scala <<EOF
 object Main { def main(args: Array[String]): Unit = println(\"$EXPECTED\") }
 EOF
         $SCALA_DIR/bin/scalac Main.scala 2>/dev/null && \
-        $SCALA_DIR/bin/scala -classpath . Main 2>/dev/null"
-else skip "Scala" "not installed"; fi
+        $JDK_DIR/bin/java -cp \"$SCALA_DIR/lib/*:.\" Main"
+else skip "Scala" "scalac or JDK missing"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Scripting / interpreted"
