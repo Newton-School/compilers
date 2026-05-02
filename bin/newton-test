@@ -254,6 +254,20 @@ if command -v nand2tetris >/dev/null; then
     fi
 else skip "nand2tetris" "not installed"; fi
 
+IVERILOG_DIR="$(resolve '/usr/local/iverilog-*')"
+if [[ -n "$IVERILOG_DIR" ]]; then
+    t "Verilog (Icarus)" verilog "
+        cat > main.v <<'EOF'
+module testbench;
+  initial begin
+    \$display(\"$EXPECTED\");
+    \$finish(0);
+  end
+endmodule
+EOF
+        $IVERILOG_DIR/bin/iverilog -g2012 -o sim.vvp main.v && $IVERILOG_DIR/bin/vvp sim.vvp"
+else skip "Verilog (Icarus)" "no /usr/local/iverilog-*"; fi
+
 # ────────────────────────────────────────────────────────────────────────
 section "Sandbox"
 # ────────────────────────────────────────────────────────────────────────

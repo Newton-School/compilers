@@ -441,6 +441,31 @@ RUN /usr/local/python-${PYTHON_ML_VERSION}/bin/pip3 install --no-cache-dir \
         qutip
 
 # ════════════════════════════════════════════════════════════════════════
+# Tier 11 — Verilog (Icarus 13.0)
+#
+# Icarus Verilog is an event-driven Verilog/SystemVerilog simulator.
+# Backs judge0 language id 3005. Pure C/C++ source build, no per-arch
+# branching needed (multi-arch from the same RUN). Build deps installed
+# and purged in the same RUN so they don't survive into the final image.
+# ════════════════════════════════════════════════════════════════════════
+
+ENV IVERILOG_VERSION 13.0
+RUN set -xe \
+    && apt-get update && apt-get install -y --no-install-recommends \
+         autoconf gperf flex bison make \
+    && cd /tmp \
+    && curl -fsSL https://github.com/steveicarus/iverilog/archive/refs/tags/v${IVERILOG_VERSION}.tar.gz | tar xz \
+    && cd iverilog-${IVERILOG_VERSION} \
+    && sh autoconf.sh \
+    && ./configure --prefix=/usr/local/iverilog-${IVERILOG_VERSION} \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/iverilog-${IVERILOG_VERSION} \
+    && apt-get purge -y autoconf gperf flex bison \
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ════════════════════════════════════════════════════════════════════════
 # Final wiring
 # ════════════════════════════════════════════════════════════════════════
 
