@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.27-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.28-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -14,6 +14,8 @@
 # Clojure, PHP, Lua, Perl, Swift, Haskell, OCaml, Erlang, Elixir,
 # Pascal, SBCL, D, COBOL, GNU Prolog, .NET — all archived in judge0
 # 0.59+ for low usage.
+# 0.28: dropped GCC 14 C/C++ tests (only GCC 9.5 retained); re-added
+# Kotlin and Scala tests for the re-introduced course tracks.
 #
 set -u
 
@@ -80,7 +82,6 @@ else skip "Bash" "no /usr/local/bash-*"; fi
 section "C / C++"
 # ────────────────────────────────────────────────────────────────────────
 GCC9_DIR="$(resolve '/usr/local/gcc-9.*')"
-GCC_DIR="$(resolve '/usr/local/gcc-1[0-9].*' )"
 
 WRITE_C="printf '%s\n' '#include <stdio.h>' 'int main(void) { printf(\"$EXPECTED\\\\n\"); return 0; }' > main.c"
 WRITE_CPP="printf '%s\n' '#include <iostream>' 'int main() { std::cout << \"$EXPECTED\" << std::endl; return 0; }' > main.cpp"
@@ -89,11 +90,6 @@ if [[ -n "$GCC9_DIR" ]]; then
     t "C (GCC 9.x)" gcc9c "$WRITE_C && $GCC9_DIR/bin/gcc main.c -o a.out && ./a.out"
     t "C++ (GCC 9.x)" gcc9cpp "$WRITE_CPP && $GCC9_DIR/bin/g++ main.cpp -o a.out && LD_LIBRARY_PATH=$GCC9_DIR/lib64 ./a.out"
 else skip "GCC 9.x" "not installed"; fi
-
-if [[ -n "$GCC_DIR" ]]; then
-    t "C (GCC 14.x)" gccc "$WRITE_C && $GCC_DIR/bin/gcc main.c -o a.out && ./a.out"
-    t "C++ (GCC 14.x)" gcccpp "$WRITE_CPP && $GCC_DIR/bin/g++ main.cpp -o a.out && LD_LIBRARY_PATH=$GCC_DIR/lib64 ./a.out"
-else skip "GCC modern" "not installed"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "JVM"
@@ -106,6 +102,26 @@ public class Main { public static void main(String[] a) { System.out.println(\"$
 EOF
         $JDK_DIR/bin/javac Main.java && $JDK_DIR/bin/java Main"
 else skip "Java" "no JDK found"; fi
+
+KOTLIN_DIR="$(resolve '/usr/local/kotlin-*')"
+if [[ -n "$KOTLIN_DIR" ]]; then
+    t "Kotlin" kotlin "
+        cat > Main.kt <<EOF
+fun main() { println(\"$EXPECTED\") }
+EOF
+        $KOTLIN_DIR/bin/kotlinc Main.kt -include-runtime -d Main.jar 2>/dev/null && \
+        $JDK_DIR/bin/java -jar Main.jar"
+else skip "Kotlin" "not installed"; fi
+
+SCALA_DIR="$(resolve '/usr/local/scala-*')"
+if [[ -n "$SCALA_DIR" ]]; then
+    t "Scala" scala "
+        cat > Main.scala <<EOF
+object Main { def main(args: Array[String]): Unit = println(\"$EXPECTED\") }
+EOF
+        $SCALA_DIR/bin/scalac Main.scala 2>/dev/null && \
+        $SCALA_DIR/bin/scala -classpath . Main 2>/dev/null"
+else skip "Scala" "not installed"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Scripting / interpreted"

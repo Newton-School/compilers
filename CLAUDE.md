@@ -2,9 +2,33 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.27+` (Newton's
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.28+` (Newton's
 modernised + trimmed artifact, which is what `Newton-School/judge0` actually
 consumes).
+
+## What changed in 0.28 (vs 0.27)
+
+Two-part diff:
+
+1. **Dropped GCC 14.2.0** — only GCC 9.5.0 retained for C/C++. Production
+   submissions never adopted the GCC 14 ids; the second toolchain build
+   was paying ~45 min of compile time and ~1 GB of image for nothing.
+   `GCC_VERSION` env pin and the Tier 1 build are gone; ids 3003/3004 in
+   judge0 (`Newton-School/judge0`) move to `archived.rb` in the same
+   release.
+2. **Re-added Kotlin 2.3.21 and Scala 3.8.3** — both were trimmed in 0.27
+   but are needed again for re-introduced course tracks. Sit in Tier 4
+   alongside the JDK. `kotlinc`/`kotlin`/`scalac`/`scala` symlinked into
+   `/usr/local/bin`; versioned install dirs at `/usr/local/kotlin-2.3.21`
+   and `/usr/local/scala-3.8.3`.
+3. **Pinned nand2tetris-web-ide to a specific commit SHA**
+   (`NAND2TETRIS_REF`). The repo is public and Newton-owned, so any
+   accidental push to its default branch would otherwise change image
+   behavior on the next rebuild. Bumping the pin is now an intentional
+   action, not a side effect.
+
+Plain text (judge0 id 43) needs no toolchain — handled purely on the
+judge0 side.
 
 ## What changed in 0.27 (vs 0.26)
 
@@ -33,9 +57,10 @@ weren't actually using were ~6-7 GB of the image. Dropped toolchains:
 Also: `gfortran` removed from base apt and `--enable-languages=c,c++` (no
 fortran) on both GCC builds, since Fortran (id 59) was archived.
 
-What's still in: GCC 9.5 + 14.2 (C/C++), Java 21, Python 3.13 + 3.12 ML,
-Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
-NASM, FreeBASIC, SQLite, MARS, nand2tetris, isolate v2.
+What's still in (after 0.28): GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21,
+Scala 3.8.3, Python 3.13 + 3.12 ML, Ruby 3.3.6, Node 22 + TypeScript,
+Go 1.23, Rust 1.83, R 4.5, Bash 5.2, NASM, FreeBASIC, SQLite, MARS,
+nand2tetris, isolate v2.
 
 ## Repo layout you will care about
 
@@ -61,10 +86,10 @@ NASM, FreeBASIC, SQLite, MARS, nand2tetris, isolate v2.
 - isolate v2 (sandbox) — cgroup v2 capable. The judge0 Rails app currently
   runs it in non-cgroup mode (per-process rlimits) because in-container
   cgroup-v2 delegation needs systemd, which the container doesn't run.
-- One latest-stable per language family, except **GCC 9.5.0 is kept
-  alongside GCC 14.2.0** so legacy student-code compile paths (judge0
-  language ids 48/49/50/52/53/54) keep working with a 9.x ABI/diagnostic
-  surface, while new submissions can target ids 1001/1002 for GCC 14.
+- One latest-stable per language family. **GCC pinned to 9.5.0 only**
+  (modern GCC 14 path dropped in 0.28); ids 48/49/50/52/53/54 still serve
+  the GCC 9.x ABI/diagnostic surface. ids 3003/3004 (GCC 14 C/C++) are
+  archived on the judge0 side.
 - Drops: Python 2.7, Mono, VB.Net.
 - Multi-arch (amd64 + arm64) via `ARG TARGETARCH` branching. arm64 falls
   back to bookworm `apt sbcl` and `apt fpc` (no upstream binaries) and
@@ -72,14 +97,19 @@ NASM, FreeBASIC, SQLite, MARS, nand2tetris, isolate v2.
 
 ### Layer ordering rule
 
-Tier 0 (foundation, frozen) at the top, tier 11 (Python ML pip install,
+Tier 0 (foundation, frozen) at the top, tier 10 (Python ML pip install,
 volatile) at the bottom. Editing the Python ML package list invalidates
 ONE layer; bumping a language version cascades to everything below it.
 **Append new languages at the bottom; don't insert in the middle.**
 
-The version pins are all in the top `ENV` block. Editing any of those
-invalidates every layer — don't bump versions there casually. For purely
-additive package changes, append a new RUN at the bottom.
+**0.28+ change: per-language version pins.** Each language's version
+ENV now sits directly above its install RUN, instead of all pins
+sharing one mega-ENV at the top of the file. Bumping one language only
+invalidates that ENV layer + the RUN below it + everything further
+down. Adding a new language at the bottom invalidates nothing above.
+Pre-0.28, the top mega-ENV meant any single bump rebuilt the whole
+image (45+ min wasted on the JDK_FILE_VERSION incident in 0.26 was the
+proximate cause of this restructure).
 
 ## Build commands
 
@@ -87,13 +117,13 @@ additive package changes, append a new RUN at the bottom.
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.27-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.28-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.27 \
+  -t newtonschool/judge0-newton-compiler:0.28 \
   --load .
 ```
 
@@ -106,13 +136,13 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.27-arm64 \
+  newtonschool/judge0-newton-compiler:0.28-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.27 trim): 17 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and
-FreeBASIC are amd64-only upstream and skip on arm64). 19 PASS / 0 FAIL /
-0 SKIP on amd64.
+Expected (post 0.28: GCC 14 dropped, Kotlin + Scala added → net +1):
+18 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
+upstream and skip on arm64). 20 PASS / 0 FAIL / 0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
@@ -155,8 +185,9 @@ If this isn't green, DON'T tag/push.
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
 - Tags currently published: `0.25` (legacy), `0.26` (Phase 2 modernised),
-  `0.27` (Phase 3 trimmed — current target)
-- Phase-3 production tag: `0.27` (amd64) — produced on EC2
+  `0.27` (Phase 3 trimmed), `0.28` (Phase 4 — GCC 14 dropped, Kotlin/Scala
+  re-added; current target)
+- Phase-4 production tag: `0.28` (amd64) — produced on EC2
 
 ## Production deploys
 
