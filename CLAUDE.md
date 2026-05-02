@@ -2,65 +2,40 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.28+` (Newton's
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.29+` (Newton's
 modernised + trimmed artifact, which is what `Newton-School/judge0` actually
 consumes).
 
-## What changed in 0.28 (vs 0.27)
+## What's in the image
 
-Two-part diff:
+GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
+Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
+NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
+Icarus Verilog 13.0, isolate v2.
 
-1. **Dropped GCC 14.2.0** — only GCC 9.5.0 retained for C/C++. Production
-   submissions never adopted the GCC 14 ids; the second toolchain build
-   was paying ~45 min of compile time and ~1 GB of image for nothing.
-   `GCC_VERSION` env pin and the Tier 1 build are gone; ids 3003/3004 in
-   judge0 (`Newton-School/judge0`) move to `archived.rb` in the same
-   release.
-2. **Re-added Kotlin 2.3.21 and Scala 3.8.3** — both were trimmed in 0.27
-   but are needed again for re-introduced course tracks. Sit in Tier 4
-   alongside the JDK. `kotlinc`/`kotlin`/`scalac`/`scala` symlinked into
-   `/usr/local/bin`; versioned install dirs at `/usr/local/kotlin-2.3.21`
-   and `/usr/local/scala-3.8.3`.
-3. **Pinned nand2tetris-web-ide to a specific commit SHA**
-   (`NAND2TETRIS_REF`). The repo is public and Newton-owned, so any
-   accidental push to its default branch would otherwise change image
-   behavior on the next rebuild. Bumping the pin is now an intentional
-   action, not a side effect.
+Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 
-Plain text (judge0 id 43) needs no toolchain — handled purely on the
-judge0 side.
+**Operational notes:**
 
-## What changed in 0.27 (vs 0.26)
+- **GCC pinned to 9.5.0 only.** GCC 14 was archived in 0.28; ids 3003/3004 in
+  judge0 (`Newton-School/judge0`) live in `archived.rb`. The lenient flags on
+  ids 50/54 keep legacy student code compiling on the 9.x diagnostic surface.
+- **`gfortran` is not in the image.** GCC builds use `--enable-languages=c,c++`
+  only, since Fortran (id 59) was archived in 0.27.
+- **nand2tetris-web-ide is pinned to a commit SHA** (`NAND2TETRIS_REF`). The
+  repo is Newton-owned and public — any accidental push to its default branch
+  would otherwise change image behaviour on the next rebuild. Bumping the pin
+  is intentional.
+- **Kotlin/Scala live in Tier 4** alongside the JDK. `kotlinc` / `kotlin` /
+  `scalac` / `scala` are symlinked into `/usr/local/bin`; versioned install
+  dirs at `/usr/local/kotlin-2.3.21` and `/usr/local/scala-3.8.3`.
+- **Icarus Verilog lives in Tier 11** (added in 0.29, below the pip ML
+  layer) — pure C/C++ source build, no per-arch branching. Backs judge0
+  language id 3005. Build deps (autoconf/gperf/flex/bison) are installed
+  and purged in the same RUN.
 
-Aggressive trim driven by prod usage data: the languages that students
-weren't actually using were ~6-7 GB of the image. Dropped toolchains:
-
-- **Clang/LLVM** (C/C++/Obj-C apt path) — Clang ids 75/76/79
-- **.NET 8 SDK + dotnet-script** — C# (51) and F# (87)
-- **Haskell GHC** (~3 GB by itself) — id 61
-- **Swift** — id 83
-- **Erlang/OTP + Elixir** — ids 58, 57
-- **OCaml** — id 65
-- **Octave** — id 66
-- **Free Pascal (FPC)** — id 67
-- **GnuCOBOL** — id 77
-- **GNU Prolog** — id 69
-- **SBCL** (Common Lisp) — id 55
-- **DMD/LDC** (D) — id 56
-- **Lua** — id 64
-- **PHP** — id 68
-- **Kotlin** — id 78
-- **Scala 3** — id 81
-- **Groovy** — id 88
-- **Clojure** — id 86
-
-Also: `gfortran` removed from base apt and `--enable-languages=c,c++` (no
-fortran) on both GCC builds, since Fortran (id 59) was archived.
-
-What's still in (after 0.28): GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21,
-Scala 3.8.3, Python 3.13 + 3.12 ML, Ruby 3.3.6, Node 22 + TypeScript,
-Go 1.23, Rust 1.83, R 4.5, Bash 5.2, NASM, FreeBASIC, SQLite, MARS,
-nand2tetris, isolate v2.
+See `git log` for the 0.26 → 0.29 trim/revive chronology if you need to know
+when a particular toolchain came or went.
 
 ## Repo layout you will care about
 
@@ -83,9 +58,11 @@ nand2tetris, isolate v2.
 - Base: `buildpack-deps:bookworm` (Debian 12). The pre-0.26 image was on
   `judge0/buildpack-deps:buster-2019-12-28` and required a sources.list
   rewrite to `archive.debian.org` to do anything.
-- isolate v2 (sandbox) — cgroup v2 capable. The judge0 Rails app currently
-  runs it in non-cgroup mode (per-process rlimits) because in-container
-  cgroup-v2 delegation needs systemd, which the container doesn't run.
+- isolate v2 (sandbox) — cgroup v2 capable. judge0's `docker-entrypoint.sh`
+  substitutes for `isolate-cg-keeper` (the systemd service that normally
+  populates `/run/isolate/cgroup`), so the Rails app runs isolate in
+  cgroup-v2 mode — RSS-based memory, `cpu.stat`-based time. Falls back
+  silently to rlimit mode on cgroup-v1 hosts.
 - One latest-stable per language family. **GCC pinned to 9.5.0 only**
   (modern GCC 14 path dropped in 0.28); ids 48/49/50/52/53/54 still serve
   the GCC 9.x ABI/diagnostic surface. ids 3003/3004 (GCC 14 C/C++) are
@@ -102,14 +79,11 @@ volatile) at the bottom. Editing the Python ML package list invalidates
 ONE layer; bumping a language version cascades to everything below it.
 **Append new languages at the bottom; don't insert in the middle.**
 
-**0.28+ change: per-language version pins.** Each language's version
-ENV now sits directly above its install RUN, instead of all pins
-sharing one mega-ENV at the top of the file. Bumping one language only
-invalidates that ENV layer + the RUN below it + everything further
-down. Adding a new language at the bottom invalidates nothing above.
-Pre-0.28, the top mega-ENV meant any single bump rebuilt the whole
-image (45+ min wasted on the JDK_FILE_VERSION incident in 0.26 was the
-proximate cause of this restructure).
+**Per-language ENV pins, not a mega-ENV.** Each language's version ENV
+sits directly above its install RUN. Bumping one language invalidates
+that ENV + RUN + everything below — never above. Don't consolidate pins
+into a shared block at the top: a single bump there rebuilds the whole
+image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 
 ## Build commands
 
@@ -136,17 +110,17 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.28-arm64 \
+  newtonschool/judge0-newton-compiler:0.29-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.28: GCC 14 dropped, Kotlin + Scala added → net +1):
-18 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). 20 PASS / 0 FAIL / 0 SKIP on amd64.
+Expected (post 0.29: Icarus Verilog 13.0 added):
+19 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
+upstream and skip on arm64). 21 PASS / 0 FAIL / 0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
-## Common pitfalls (encountered while building 0.26 — don't repeat)
+## Common pitfalls
 
 1. **`/bin/sh` is dash, not bash.** RUN steps use POSIX shell. Bash-only
    constructs like `${var//pat/repl}` fail with `Bad substitution`. Use
@@ -184,10 +158,7 @@ If this isn't green, DON'T tag/push.
 ## Image is published as
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
-- Tags currently published: `0.25` (legacy), `0.26` (Phase 2 modernised),
-  `0.27` (Phase 3 trimmed), `0.28` (Phase 4 — GCC 14 dropped, Kotlin/Scala
-  re-added; current target)
-- Phase-4 production tag: `0.28` (amd64) — produced on EC2
+- Current tag: **`0.29`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28.
 
 ## Production deploys
 
