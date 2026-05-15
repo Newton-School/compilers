@@ -8,12 +8,14 @@
 #   modern GCC 14 path was dropped in 0.28 since no production submissions
 #   targeted the new ids.
 # - cgroup v2 only via isolate v2.
-# - Trimmed in 0.27: Clang, .NET, Haskell, Swift, Erlang/Elixir, Lua,
+# - Trimmed in 0.27: Clang, Haskell, Swift, Erlang/Elixir, Lua,
 #   OCaml, Octave, Pascal, GnuCOBOL, GNU Prolog, SBCL, D, Groovy, Clojure,
 #   PHP — none had meaningful prod usage.
 # - 0.28: dropped GCC 14.2; Kotlin and Scala re-added at latest stable for
 #   re-introduced course tracks. Plain-text (judge0 id 43) needs no
 #   toolchain and is configured purely on the judge0 side.
+# - 0.30: restore C# lanes for hiring-course coverage: Mono 6.12 (legacy
+#   4.7-era compatibility) plus side-by-side .NET 8 and .NET 10 SDKs.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -27,7 +29,9 @@
 #   Tier 7: Node + TypeScript (TypeScript split out, frequent bumps)
 #   Tier 8: Python 3.12 ML interpreter (split from packages)
 #   Tier 9: Newton extras (MARS, nand2tetris)
-#   Tier 10: Python ML pip install — most volatile, BOTTOM
+#   Tier 10: Python ML pip install — most volatile
+#   Tier 11: Verilog (Icarus)
+#   Tier 12: C# / .NET (restored in 0.30)
 #
 # Cache-friendly editing rules:
 #   - Each language's version pin is an ENV directly above its RUN block.
@@ -37,7 +41,7 @@
 #     the whole image on any bump.
 #   - Adding/removing pip pkgs: edit the bottom layer only.
 #   - Adding a new language: APPEND a new ENV+RUN pair at the bottom
-#     (above pip install) so existing cache stays warm.
+#     so existing cache stays warm.
 #
 # Multi-arch: amd64 + arm64 supported via TARGETARCH branching.
 # Build:
@@ -473,12 +477,55 @@ RUN set -xe \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ════════════════════════════════════════════════════════════════════════
+# Tier 12 — C# / .NET
+#
+# Restores three Judge0-facing C# lanes:
+#   - Mono 6.12 for legacy .NET Framework 4.7-era compatibility
+#   - .NET 8 SDK for modern LTS C#
+#   - .NET 10 SDK for current-generation C#
+#
+# Mono is installed into a versioned prefix so Judge0 can keep a stable
+# compile/run path. The two dotnet SDKs are installed side-by-side into a
+# shared DOTNET_ROOT so `dotnet` can build both net8.0 and net10.0 projects.
+# ════════════════════════════════════════════════════════════════════════
+
+ENV MONO_VERSION=6.12.0.206
+RUN set -xe \
+    && apt-get update && apt-get install -y --no-install-recommends gettext \
+    && curl -fSsL "https://download.mono-project.com/sources/mono/mono-${MONO_VERSION}.tar.xz" -o /tmp/mono.tar.xz \
+    && mkdir /tmp/mono && tar -xf /tmp/mono.tar.xz -C /tmp/mono --strip-components=1 \
+    && cd /tmp/mono \
+    && ./configure --prefix=/usr/local/mono-${MONO_VERSION} \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/mono /tmp/mono.tar.xz \
+    && ln -sf /usr/local/mono-${MONO_VERSION}/bin/mono /usr/local/bin/mono \
+    && ln -sf /usr/local/mono-${MONO_VERSION}/bin/mcs /usr/local/bin/mcs \
+    && apt-get purge -y gettext \
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV DOTNET8_VERSION=8.0.419
+ENV DOTNET10_VERSION=10.0.106
+RUN set -xe \
+    && curl -fSsL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh --version ${DOTNET8_VERSION} --install-dir /usr/local/dotnet-sdk \
+    && bash /tmp/dotnet-install.sh --version ${DOTNET10_VERSION} --install-dir /usr/local/dotnet-sdk \
+    && rm /tmp/dotnet-install.sh \
+    && ln -sf /usr/local/dotnet-sdk/dotnet /usr/local/bin/dotnet
+ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
+    DOTNET_NOLOGO=1 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_MULTILEVEL_LOOKUP=0
+
+# ════════════════════════════════════════════════════════════════════════
 # Final wiring
 # ════════════════════════════════════════════════════════════════════════
 
-ENV PATH="/usr/local/openjdk-21/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
       org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
       org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised, trimmed)" \
-      org.opencontainers.image.version="0.28"
+      org.opencontainers.image.version="0.30"
