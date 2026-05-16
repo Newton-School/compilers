@@ -492,14 +492,14 @@ RUN set -xe \
 ENV MONO_VERSION=6.12.0.200
 RUN set -xe \
     && apt-get update && apt-get install -y --no-install-recommends gettext \
-    && curl -fSsL "https://download.mono-project.com/sources/mono/mono-${MONO_VERSION}.tar.xz" -o /tmp/mono.tar.xz \
-    && mkdir /tmp/mono && tar -xf /tmp/mono.tar.xz -C /tmp/mono --strip-components=1 \
+    && curl -fSsL "https://github.com/mono/mono/archive/refs/tags/mono-${MONO_VERSION}.tar.gz" -o /tmp/mono.tar.gz \
+    && mkdir /tmp/mono && tar -xf /tmp/mono.tar.gz -C /tmp/mono --strip-components=1 \
     && cd /tmp/mono \
     && ./configure --prefix=/usr/local/mono-${MONO_VERSION} \
     && make -j"$(nproc)" \
     && make install \
     && cd / \
-    && rm -rf /tmp/mono /tmp/mono.tar.xz \
+    && rm -rf /tmp/mono /tmp/mono.tar.gz \
     && ln -sf /usr/local/mono-${MONO_VERSION}/bin/mono /usr/local/bin/mono \
     && ln -sf /usr/local/mono-${MONO_VERSION}/bin/mcs /usr/local/bin/mcs \
     && apt-get purge -y gettext \
