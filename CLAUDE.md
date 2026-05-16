@@ -2,7 +2,7 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.29+` (Newton's
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.30+` (Newton's
 modernised + trimmed artifact, which is what `Newton-School/judge0` actually
 consumes).
 
@@ -11,7 +11,7 @@ consumes).
 GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
 Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
-Icarus Verilog 13.0, isolate v2.
+Icarus Verilog 13.0, Mono 6.12 + .NET 8 + .NET 10 (C# lanes), isolate v2.
 
 Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 
@@ -33,8 +33,15 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   layer) — pure C/C++ source build, no per-arch branching. Backs judge0
   language id 3005. Build deps (autoconf/gperf/flex/bison) are installed
   and purged in the same RUN.
+- **C# / .NET lives in Tier 12** (added in 0.30, bottom of the file).
+  Mono 6.12.0.122 is a from-source build into `/usr/local/mono-<ver>`
+  (legacy `.NET Framework 4.7`-era compat); .NET 8.0.420 and .NET 10.0.202
+  SDKs install side-by-side into `/usr/local/dotnet-sdk` via the official
+  `dotnet-install.sh`, with `DOTNET_ROOT` set and `DOTNET_MULTILEVEL_LOOKUP=0`.
+  Per-test SDK selection is via a `global.json` (`rollForward: disable`).
+  `mono`, `mcs`, and `dotnet` are symlinked into `/usr/local/bin`.
 
-See `git log` for the 0.26 → 0.29 trim/revive chronology if you need to know
+See `git log` for the 0.26 → 0.30 trim/revive chronology if you need to know
 when a particular toolchain came or went.
 
 ## Repo layout you will care about
@@ -67,7 +74,8 @@ when a particular toolchain came or went.
   (modern GCC 14 path dropped in 0.28); ids 48/49/50/52/53/54 still serve
   the GCC 9.x ABI/diagnostic surface. ids 3003/3004 (GCC 14 C/C++) are
   archived on the judge0 side.
-- Drops: Python 2.7, Mono, VB.Net.
+- Drops: Python 2.7, VB.Net. (Mono was dropped in 0.27 and re-added in
+  0.30 alongside .NET 8 / .NET 10 SDKs for hiring-course C# coverage.)
 - Multi-arch (amd64 + arm64) via `ARG TARGETARCH` branching. arm64 falls
   back to bookworm `apt sbcl` and `apt fpc` (no upstream binaries) and
   uses LDC instead of DMD.
@@ -91,13 +99,13 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.28-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.30-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.28 \
+  -t newtonschool/judge0-newton-compiler:0.30 \
   --load .
 ```
 
@@ -110,13 +118,13 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.29-arm64 \
+  newtonschool/judge0-newton-compiler:0.30-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.29: Icarus Verilog 13.0 added):
-19 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). 21 PASS / 0 FAIL / 0 SKIP on amd64.
+Expected (post 0.30: 3 C# lanes added — Mono legacy, .NET 8, .NET 10):
+22 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
+upstream and skip on arm64). 24 PASS / 0 FAIL / 0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
@@ -158,7 +166,7 @@ If this isn't green, DON'T tag/push.
 ## Image is published as
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
-- Current tag: **`0.29`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28.
+- Current tag: **`0.30`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28, 0.29.
 
 ## Production deploys
 
