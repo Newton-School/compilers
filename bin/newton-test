@@ -149,33 +149,6 @@ EOF
         $MONO_DIR/bin/mcs Main.cs && $MONO_DIR/bin/mono Main.exe"
 else skip "C# (Mono legacy)" "no /usr/local/mono-*"; fi
 
-if command -v dotnet >/dev/null && [[ -n "${DOTNET8_VERSION:-}" ]]; then
-    t "C# (.NET 8)" csharpdotnet8 "
-        mkdir -p .dotnet-home out && \
-        cat > global.json <<EOF
-{ \"sdk\": { \"version\": \"${DOTNET8_VERSION}\", \"rollForward\": \"disable\" } }
-EOF
-        cat > Main.csproj <<EOF
-<Project Sdk=\"Microsoft.NET.Sdk\">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>disable</Nullable>
-    <UseAppHost>false</UseAppHost>
-  </PropertyGroup>
-</Project>
-EOF
-        cat > Program.cs <<'EOF'
-using System;
-using System.Linq;
-
-Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
-EOF
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net8.0 -nologo -o out >/dev/null && \
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
-else skip "C# (.NET 8)" "dotnet or DOTNET8_VERSION missing"; fi
-
 if command -v dotnet >/dev/null && [[ -n "${DOTNET10_VERSION:-}" ]]; then
     t "C# (.NET 10)" csharpdotnet10 "
         mkdir -p .dotnet-home out && \

@@ -506,11 +506,9 @@ RUN set -xe \
     && apt-get purge -y gettext \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV DOTNET8_VERSION=8.0.420
 ENV DOTNET10_VERSION=10.0.202
 RUN set -xe \
     && curl -fSsL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
-    && bash /tmp/dotnet-install.sh --version ${DOTNET8_VERSION} --install-dir /usr/local/dotnet-sdk \
     && bash /tmp/dotnet-install.sh --version ${DOTNET10_VERSION} --install-dir /usr/local/dotnet-sdk \
     && rm /tmp/dotnet-install.sh \
     && ln -sf /usr/local/dotnet-sdk/dotnet /usr/local/bin/dotnet
