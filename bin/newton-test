@@ -142,7 +142,7 @@ class Program
 {
     static void Main()
     {
-        Console.WriteLine(string.Join(\" \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
+        Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
     }
 }
 EOF
@@ -170,7 +170,7 @@ EOF
 using System;
 using System.Linq;
 
-Console.WriteLine(string.Join(\" \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
+Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
 EOF
         DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net8.0 -nologo -o out >/dev/null && \
         DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
@@ -197,7 +197,7 @@ EOF
 using System;
 using System.Linq;
 
-Console.WriteLine(string.Join(\" \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
+Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
 EOF
         DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net10.0 -nologo -o out >/dev/null && \
         DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
