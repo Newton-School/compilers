@@ -15,7 +15,8 @@
 #   re-introduced course tracks. Plain-text (judge0 id 43) needs no
 #   toolchain and is configured purely on the judge0 side.
 # - 0.30+: restore C# lanes for hiring-course coverage: Mono 6.12 (legacy
-#   compatibility) plus side-by-side .NET Core SDK 7.0.400 and 8.0.302.
+#   compatibility) plus side-by-side .NET Core SDK 7.0.400, 8.0.302,
+#   and 10.0.202.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -483,10 +484,12 @@ RUN set -xe \
 #   - Mono 6.12 for legacy .NET Framework-era compatibility
 #   - .NET Core SDK 7.0.400
 #   - .NET Core SDK 8.0.302
+#   - .NET Core SDK 10.0.202
 #
 # Mono is installed into a versioned prefix so Judge0 can keep a stable
-# compile/run path. The two dotnet SDKs are installed side-by-side into a
-# shared DOTNET_ROOT so `dotnet` can build both net7.0 and net8.0 projects.
+# compile/run path. The three dotnet SDKs are installed side-by-side into a
+# shared DOTNET_ROOT so `dotnet` can build net7.0, net8.0, and net10.0
+# projects.
 # ════════════════════════════════════════════════════════════════════════
 
 ENV MONO_VERSION=6.12.0.122
@@ -508,10 +511,12 @@ RUN set -xe \
 
 ENV DOTNET7_VERSION=7.0.400
 ENV DOTNET8_VERSION=8.0.302
+ENV DOTNET10_VERSION=10.0.202
 RUN set -xe \
     && curl -fSsL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
     && bash /tmp/dotnet-install.sh --version ${DOTNET7_VERSION} --install-dir /usr/local/dotnet-sdk \
     && bash /tmp/dotnet-install.sh --version ${DOTNET8_VERSION} --install-dir /usr/local/dotnet-sdk \
+    && bash /tmp/dotnet-install.sh --version ${DOTNET10_VERSION} --install-dir /usr/local/dotnet-sdk \
     && rm /tmp/dotnet-install.sh \
     && ln -sf /usr/local/dotnet-sdk/dotnet /usr/local/bin/dotnet
 ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
