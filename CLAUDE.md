@@ -11,7 +11,8 @@ consumes).
 GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
 Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
-Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes), isolate v2.
+Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 + .NET 10 (C# lanes),
+isolate v2.
 
 Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 
@@ -36,8 +37,8 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 - **C# / .NET lives in Tier 12** (added in 0.30, retuned in 0.32, W^X
   workaround added in 0.33). Mono 6.12.0.122 is a from-source build into
   `/usr/local/mono-<ver>` (legacy `.NET Framework 4.7`-era compat); .NET
-  7.0.400 (hiring courses target net7.0) and .NET 8.0.302 SDKs install
-  side-by-side into `/usr/local/dotnet-sdk` via the official
+  7.0.400 (hiring courses target net7.0), .NET 8.0.302, and .NET 10.0.202
+  SDKs install side-by-side into `/usr/local/dotnet-sdk` via the official
   `dotnet-install.sh`, with `DOTNET_ROOT` set and
   `DOTNET_MULTILEVEL_LOOKUP=0`. Telemetry/first-run noise suppressed via
   `DOTNET_NOLOGO=1`, `DOTNET_CLI_TELEMETRY_OPTOUT=1`,
@@ -93,7 +94,8 @@ when a particular toolchain came or went.
 - Drops: Python 2.7, VB.Net. (Mono was dropped in 0.27 and re-added in
   0.30 for hiring-course C# coverage. 0.32 swapped the side-by-side SDKs
   from .NET 8 + .NET 10 to .NET 7 + .NET 8 — net7.0 is the hiring-course
-  target. .NET 7 is out of Microsoft support since May 2024; pin is
+  target. This branch adds .NET 10 back alongside the current .NET 7 and
+  .NET 8 lanes. .NET 7 is out of Microsoft support since May 2024; pin is
   intentional and locked via `global.json` rollForward: disable.)
 - Multi-arch (amd64 + arm64) via `ARG TARGETARCH` branching. arm64 falls
   back to bookworm `apt sbcl` and `apt fpc` (no upstream binaries) and
@@ -141,9 +143,9 @@ docker run --rm \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.33: 3 C# lanes — Mono legacy, .NET 7, .NET 8):
-22 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). 24 PASS / 0 FAIL / 0 SKIP on amd64.
+Expected (branch state with 4 C# lanes — Mono legacy, .NET 7, .NET 8,
+.NET 10): 23 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are
+amd64-only upstream and skip on arm64). 25 PASS / 0 FAIL / 0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
