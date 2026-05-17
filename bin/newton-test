@@ -162,20 +162,18 @@ EOF
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net7.0</TargetFramework>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>disable</Nullable>
-    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 </Project>
 EOF
-        cat > Program.cs <<'EOF'
+        cat > Main.cs <<'EOF'
 using System;
 using System.Linq;
 
 Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
 EOF
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net7.0 -nologo -o out >/dev/null && \
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
+        mkdir -p ~/.dotnet && touch ~/.dotnet/${DOTNET7_VERSION}.dotnetFirstUseSentinel && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj -nologo >/dev/null && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
 else skip "C# (.NET Core 7)" "dotnet or DOTNET7_VERSION missing"; fi
 
 if command -v dotnet >/dev/null && [[ -n "${DOTNET8_VERSION:-}" ]]; then
@@ -189,20 +187,18 @@ EOF
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>disable</Nullable>
-    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 </Project>
 EOF
-        cat > Program.cs <<'EOF'
+        cat > Main.cs <<'EOF'
 using System;
 using System.Linq;
 
 Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
 EOF
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net8.0 -nologo -o out >/dev/null && \
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
+        mkdir -p ~/.dotnet && touch ~/.dotnet/${DOTNET8_VERSION}.dotnetFirstUseSentinel && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj -nologo >/dev/null && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
 else skip "C# (.NET Core 8)" "dotnet or DOTNET8_VERSION missing"; fi
 
 # ────────────────────────────────────────────────────────────────────────
