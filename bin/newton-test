@@ -203,6 +203,31 @@ EOF
         DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
 else skip "C# (.NET Core 8)" "dotnet or DOTNET8_VERSION missing"; fi
 
+if command -v dotnet >/dev/null && [[ -n "${DOTNET10_VERSION:-}" ]]; then
+    t "C# (.NET Core 10)" csharpdotnet10 "
+        mkdir -p .dotnet-home out && \
+        cat > global.json <<EOF
+{ \"sdk\": { \"version\": \"${DOTNET10_VERSION}\", \"rollForward\": \"disable\" } }
+EOF
+        cat > Main.csproj <<EOF
+<Project Sdk=\"Microsoft.NET.Sdk\">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+EOF
+        cat > Main.cs <<'EOF'
+using System;
+using System.Linq;
+
+Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
+EOF
+        mkdir -p ~/.dotnet && touch ~/.dotnet/${DOTNET10_VERSION}.dotnetFirstUseSentinel && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj -nologo >/dev/null && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
+else skip "C# (.NET Core 10)" "dotnet or DOTNET10_VERSION missing"; fi
+
 # ────────────────────────────────────────────────────────────────────────
 section "Scripting / interpreted"
 # ────────────────────────────────────────────────────────────────────────
