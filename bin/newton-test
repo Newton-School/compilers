@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.30-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.32-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -16,7 +16,9 @@
 # 0.59+ for low usage.
 # 0.28: dropped GCC 14 C/C++ tests (only GCC 9.5 retained); re-added
 # Kotlin and Scala tests for the re-introduced course tracks.
-# 0.30+: restored C# coverage via Mono 6.12 plus .NET Core 7 and 8.
+# 0.30: restored C# coverage via Mono 6.12 plus .NET 8 and .NET 10.
+# 0.32: swapped .NET 10 for .NET Core 7 (hiring courses need net7.0
+# target compat); .NET 8 patch downshifted to 8.0.302.
 #
 set -u
 
