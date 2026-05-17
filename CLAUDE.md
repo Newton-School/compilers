@@ -2,7 +2,7 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.32` (Newton's
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.33` (Newton's
 modernised + trimmed artifact, which is what `Newton-School/judge0` actually
 consumes).
 
@@ -33,17 +33,29 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   layer) — pure C/C++ source build, no per-arch branching. Backs judge0
   language id 3005. Build deps (autoconf/gperf/flex/bison) are installed
   and purged in the same RUN.
-- **C# / .NET lives in Tier 12** (added in 0.30, retuned in 0.32). Mono
-  6.12.0.122 is a from-source build into `/usr/local/mono-<ver>` (legacy
-  `.NET Framework 4.7`-era compat); .NET 7.0.400 (hiring courses target
-  net7.0) and .NET 8.0.302 SDKs install side-by-side into
-  `/usr/local/dotnet-sdk` via the official `dotnet-install.sh`, with
-  `DOTNET_ROOT` set and `DOTNET_MULTILEVEL_LOOKUP=0`. Telemetry/first-run
-  noise suppressed via `DOTNET_NOLOGO=1`,
-  `DOTNET_CLI_TELEMETRY_OPTOUT=1`, `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`
-  in the same ENV. Per-test SDK selection is via a `global.json`
-  (`rollForward: disable`). `mono`, `mcs`, and `dotnet` are symlinked
-  into `/usr/local/bin`.
+- **C# / .NET lives in Tier 12** (added in 0.30, retuned in 0.32, W^X
+  workaround added in 0.33). Mono 6.12.0.122 is a from-source build into
+  `/usr/local/mono-<ver>` (legacy `.NET Framework 4.7`-era compat); .NET
+  7.0.400 (hiring courses target net7.0) and .NET 8.0.302 SDKs install
+  side-by-side into `/usr/local/dotnet-sdk` via the official
+  `dotnet-install.sh`, with `DOTNET_ROOT` set and
+  `DOTNET_MULTILEVEL_LOOKUP=0`. Telemetry/first-run noise suppressed via
+  `DOTNET_NOLOGO=1`, `DOTNET_CLI_TELEMETRY_OPTOUT=1`,
+  `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1` in the same ENV. Per-test SDK
+  selection is via a `global.json` (`rollForward: disable`). `mono`,
+  `mcs`, and `dotnet` are symlinked into `/usr/local/bin`.
+- **`DOTNET_EnableWriteXorExecute=0` is intentional** (added in 0.33).
+  .NET 6+ on Linux uses a W^X double-mapped JIT code allocator that
+  calls `memfd_create` + `ftruncate` to a reservation derived from host
+  RAM. On large-RAM hosts (EC2 prod) the reservation exceeds isolate's
+  `RLIMIT_FSIZE` (capped at ~1-2 GiB by Judge0's `MAX_MAX_FILE_SIZE`),
+  causing `ftruncate` to fail with EFBIG → SIGXFSZ → dotnet dies during
+  runtime init, before any user-visible output. Diagnostic fingerprint:
+  `exit 153` (= 128 + 25) with zero stdout/stderr on compile. Disabling
+  W^X uses a single RWX mapping instead — fine inside isolate which
+  already provides the security boundary. Judge0's `IsolateJob` must
+  propagate this env via `-E DOTNET_EnableWriteXorExecute` (isolate
+  strips env by default).
 
 See `git log` for the 0.26 → 0.30 trim/revive chronology if you need to know
 when a particular toolchain came or went.
@@ -106,13 +118,13 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.32-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.33-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.32 \
+  -t newtonschool/judge0-newton-compiler:0.33 \
   --load .
 ```
 
@@ -125,11 +137,11 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.32-arm64 \
+  newtonschool/judge0-newton-compiler:0.33-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.32: 3 C# lanes — Mono legacy, .NET 7, .NET 8):
+Expected (post 0.33: 3 C# lanes — Mono legacy, .NET 7, .NET 8):
 22 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
 upstream and skip on arm64). 24 PASS / 0 FAIL / 0 SKIP on amd64.
 
@@ -173,7 +185,7 @@ If this isn't green, DON'T tag/push.
 ## Image is published as
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
-- Current tag: **`0.32`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31.
+- Current tag: **`0.33`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32.
 
 ## Production deploys
 

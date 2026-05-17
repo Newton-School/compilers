@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.32-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.33-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -19,6 +19,8 @@
 # 0.30: restored C# coverage via Mono 6.12 plus .NET 8 and .NET 10.
 # 0.32: swapped .NET 10 for .NET Core 7 (hiring courses need net7.0
 # target compat); .NET 8 patch downshifted to 8.0.302.
+# 0.33: added DOTNET_EnableWriteXorExecute=0 to compiler ENV — fixes
+# SIGXFSZ from .NET's W^X memfd+ftruncate allocator on large-RAM hosts.
 #
 set -u
 
