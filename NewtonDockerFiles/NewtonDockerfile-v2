@@ -14,8 +14,10 @@
 # - 0.28: dropped GCC 14.2; Kotlin and Scala re-added at latest stable for
 #   re-introduced course tracks. Plain-text (judge0 id 43) needs no
 #   toolchain and is configured purely on the judge0 side.
-# - 0.30+: restore C# lanes for hiring-course coverage: Mono 6.12 (legacy
-#   compatibility) plus side-by-side .NET Core SDK 7.0.400 and 8.0.302.
+# - 0.30: restore C# lanes for hiring-course coverage: Mono 6.12 (legacy
+#   4.7-era compatibility) plus side-by-side .NET 8 and .NET 10 SDKs.
+# - 0.32: swap .NET 10 for .NET 7 (hiring courses target net7.0); .NET 8
+#   patch downshifted to 8.0.302. Lanes now: Mono 6.12 + .NET 7 + .NET 8.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
