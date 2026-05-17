@@ -18,6 +18,12 @@
 #   4.7-era compatibility) plus side-by-side .NET 8 and .NET 10 SDKs.
 # - 0.32: swap .NET 10 for .NET 7 (hiring courses target net7.0); .NET 8
 #   patch downshifted to 8.0.302. Lanes now: Mono 6.12 + .NET 7 + .NET 8.
+# - 0.33: add DOTNET_EnableWriteXorExecute=0 to the Tier 12 ENV block.
+#   .NET 6+ W^X double-mapped JIT allocator calls memfd_create + ftruncate
+#   to a host-RAM-derived reservation that exceeds isolate's RLIMIT_FSIZE
+#   on large hosts (EC2), killing dotnet with SIGXFSZ during runtime init.
+#   Disabling W^X uses a single RWX mapping; safe inside isolate which
+#   already provides the security boundary.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -520,7 +526,8 @@ ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
     DOTNET_NOLOGO=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
-    DOTNET_MULTILEVEL_LOOKUP=0
+    DOTNET_MULTILEVEL_LOOKUP=0 \
+    DOTNET_EnableWriteXorExecute=0
 
 # ════════════════════════════════════════════════════════════════════════
 # Final wiring
