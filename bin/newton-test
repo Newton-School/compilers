@@ -16,7 +16,7 @@
 # 0.59+ for low usage.
 # 0.28: dropped GCC 14 C/C++ tests (only GCC 9.5 retained); re-added
 # Kotlin and Scala tests for the re-introduced course tracks.
-# 0.30: restored C# coverage via Mono 6.12 plus .NET 8 and .NET 10.
+# 0.30+: restored C# coverage via Mono 6.12 plus .NET Core 7 and 8.
 #
 set -u
 
@@ -149,8 +149,33 @@ EOF
         $MONO_DIR/bin/mcs Main.cs && $MONO_DIR/bin/mono Main.exe"
 else skip "C# (Mono legacy)" "no /usr/local/mono-*"; fi
 
+if command -v dotnet >/dev/null && [[ -n "${DOTNET7_VERSION:-}" ]]; then
+    t "C# (.NET Core 7)" csharpdotnet7 "
+        mkdir -p .dotnet-home out && \
+        cat > global.json <<EOF
+{ \"sdk\": { \"version\": \"${DOTNET7_VERSION}\", \"rollForward\": \"disable\" } }
+EOF
+        cat > Main.csproj <<EOF
+<Project Sdk=\"Microsoft.NET.Sdk\">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+EOF
+        cat > Main.cs <<'EOF'
+using System;
+using System.Linq;
+
+Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
+EOF
+        mkdir -p ~/.dotnet && touch ~/.dotnet/${DOTNET7_VERSION}.dotnetFirstUseSentinel && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj -nologo >/dev/null && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
+else skip "C# (.NET Core 7)" "dotnet or DOTNET7_VERSION missing"; fi
+
 if command -v dotnet >/dev/null && [[ -n "${DOTNET8_VERSION:-}" ]]; then
-    t "C# (.NET 8)" csharpdotnet8 "
+    t "C# (.NET Core 8)" csharpdotnet8 "
         mkdir -p .dotnet-home out && \
         cat > global.json <<EOF
 { \"sdk\": { \"version\": \"${DOTNET8_VERSION}\", \"rollForward\": \"disable\" } }
@@ -160,48 +185,19 @@ EOF
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>disable</Nullable>
-    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 </Project>
 EOF
-        cat > Program.cs <<'EOF'
+        cat > Main.cs <<'EOF'
 using System;
 using System.Linq;
 
 Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
 EOF
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net8.0 -nologo -o out >/dev/null && \
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
-else skip "C# (.NET 8)" "dotnet or DOTNET8_VERSION missing"; fi
-
-if command -v dotnet >/dev/null && [[ -n "${DOTNET10_VERSION:-}" ]]; then
-    t "C# (.NET 10)" csharpdotnet10 "
-        mkdir -p .dotnet-home out && \
-        cat > global.json <<EOF
-{ \"sdk\": { \"version\": \"${DOTNET10_VERSION}\", \"rollForward\": \"disable\" } }
-EOF
-        cat > Main.csproj <<EOF
-<Project Sdk=\"Microsoft.NET.Sdk\">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>disable</Nullable>
-    <UseAppHost>false</UseAppHost>
-  </PropertyGroup>
-</Project>
-EOF
-        cat > Program.cs <<'EOF'
-using System;
-using System.Linq;
-
-Console.WriteLine(string.Join(\", \", new[] { \"Hello\", \"Newton!\" }.Select(x => x)));
-EOF
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj --framework net10.0 -nologo -o out >/dev/null && \
-        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet out/Main.dll"
-else skip "C# (.NET 10)" "dotnet or DOTNET10_VERSION missing"; fi
+        mkdir -p ~/.dotnet && touch ~/.dotnet/${DOTNET8_VERSION}.dotnetFirstUseSentinel && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet build Main.csproj -nologo >/dev/null && \
+        DOTNET_CLI_HOME=\"$PWD/.dotnet-home\" dotnet run --no-build --project Main.csproj"
+else skip "C# (.NET Core 8)" "dotnet or DOTNET8_VERSION missing"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Scripting / interpreted"
