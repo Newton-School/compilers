@@ -2,7 +2,7 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.33` (Newton's
+upstream artifact) and `newtonschool/judge0-newton-compiler:0.34` (Newton's
 modernised + trimmed artifact, which is what `Newton-School/judge0` actually
 consumes).
 
@@ -11,7 +11,8 @@ consumes).
 GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
 Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
-Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes), isolate v2.
+Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes),
+CircuitRun Arduino Uno Arduino C++, isolate v2.
 
 Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 
@@ -56,8 +57,12 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   already provides the security boundary. Judge0's `IsolateJob` must
   propagate this env via `-E DOTNET_EnableWriteXorExecute` (isolate
   strips env by default).
+- **CircuitRun lives in Tier 13** as a digest-pinned dist-image artifact.
+  The compiler image mounts `/opt/circuitrun/dist` from `CIRCUITRUN_DIST_IMAGE`
+  and runs its `install.sh`; do not copy a full standalone worker image here.
+  The first production profile is Arduino Uno + Arduino C++ only.
 
-See `git log` for the 0.26 → 0.30 trim/revive chronology if you need to know
+See `git log` for the 0.26 → 0.34 trim/revive chronology if you need to know
 when a particular toolchain came or went.
 
 ## Repo layout you will care about
@@ -118,13 +123,15 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.33-arm64 \
+  --build-arg CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp \
+  -t newtonschool/judge0-newton-compiler:0.34-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.33 \
+  --build-arg CIRCUITRUN_DIST_IMAGE=<ecr-circuitrun-dist-digest> \
+  -t newtonschool/judge0-newton-compiler:0.34 \
   --load .
 ```
 
@@ -137,13 +144,13 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.33-arm64 \
+  newtonschool/judge0-newton-compiler:0.34-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected (post 0.33: 3 C# lanes — Mono legacy, .NET 7, .NET 8):
-22 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). 24 PASS / 0 FAIL / 0 SKIP on amd64.
+Expected after 0.34: C# lanes plus CircuitRun Arduino Uno support:
+23 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
+upstream and skip on arm64). 25 PASS / 0 FAIL / 0 SKIP on amd64.
 
 If this isn't green, DON'T tag/push.
 
@@ -185,7 +192,7 @@ If this isn't green, DON'T tag/push.
 ## Image is published as
 
 - Docker Hub: `newtonschool/judge0-newton-compiler`
-- Current tag: **`0.33`** (amd64 produced on EC2). Earlier published: 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32.
+- Current tag: **`0.34`**. Earlier published: 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33.
 
 ## Production deploys
 

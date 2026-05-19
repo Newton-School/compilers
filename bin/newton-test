@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.33-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.34-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -21,6 +21,7 @@
 # target compat); .NET 8 patch downshifted to 8.0.302.
 # 0.33: added DOTNET_EnableWriteXorExecute=0 to compiler ENV — fixes
 # SIGXFSZ from .NET's W^X memfd+ftruncate allocator on large-RAM hosts.
+# 0.34: added CircuitRun Arduino Uno + Arduino C++ compiler-image smoke.
 #
 set -u
 
@@ -343,6 +344,55 @@ endmodule
 EOF
         $IVERILOG_DIR/bin/iverilog -g2012 -o sim.vvp main.v && $IVERILOG_DIR/bin/vvp sim.vvp"
 else skip "Verilog (Icarus)" "no /usr/local/iverilog-*"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Embedded systems"
+# ────────────────────────────────────────────────────────────────────────
+if command -v circuitrun-judge0-runner >/dev/null; then
+    t "CircuitRun Arduino Uno Arduino C++" circuitrun "
+        mkdir -p src
+        cat > src/main.ino <<'EOF'
+void setup() {
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(13, HIGH);
+  delay(100);
+  digitalWrite(13, LOW);
+  delay(100);
+}
+EOF
+        cat > request.json <<'EOF'
+{
+  \"schema_version\": \"2026-05-01\",
+  \"scenario\": {
+    \"duration_ms\": 1000,
+    \"stimuli\": []
+  },
+  \"checks\": [
+    {
+      \"type\": \"pin-toggled\",
+      \"id\": \"led-blinks\",
+      \"pin\": \"D13\",
+      \"min_count\": 2
+    }
+  ],
+  \"artifacts\": {
+    \"enabled\": [\"result.json\", \"trace.ndjson\", \"waveform.json\", \"serial.log\"]
+  },
+  \"limits\": {
+    \"max_wall_ms\": 20000
+  },
+  \"context\": {
+    \"question_id\": \"compiler-image-smoke\",
+    \"test_case_id\": \"arduino-uno-arduino-cpp\"
+  }
+}
+EOF
+        circuitrun-judge0-runner judge0-evaluate --board arduino-uno --language arduino-cpp --source src/main.ino --asset-dir artifacts < request.json
+    " "CIRCUITRUN_EVALUATE_ACCEPTED"
+else skip "CircuitRun Arduino Uno Arduino C++" "circuitrun-judge0-runner not installed"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Sandbox"
