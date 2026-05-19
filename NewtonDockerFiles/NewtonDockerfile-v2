@@ -24,8 +24,8 @@
 #   on large hosts (EC2), killing dotnet with SIGXFSZ during runtime init.
 #   Disabling W^X uses a single RWX mapping; safe inside isolate which
 #   already provides the security boundary.
-# - 0.34: add CircuitRun Arduino Uno + Arduino C++ support from a
-#   digest-pinned dist image. The compiler image installs only the final
+# - 0.34: add CircuitRun Arduino Uno + Arduino C++ support from the
+#   digest-pinned CircuitRun dist image. The compiler image installs only the final
 #   Arduino profile payload, not the CircuitRun build toolchain or standalone
 #   worker filesystem.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
@@ -58,10 +58,18 @@
 #
 # Multi-arch: amd64 + arm64 supported via TARGETARCH branching.
 # Build:
+#   # arm64 native dev path; requires a locally built arm64 CircuitRun dist image.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     --build-arg CIRCUITRUN_DIST_IMAGE=<ecr-circuitrun-dist-digest> \
+#     --build-arg CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp \
 #     -t newtonschool/judge0-newton-compiler:0.34-arm64 \
+#     compilers
+#
+#   # amd64 production path; consume the Docker Hub dist image by digest.
+#   docker buildx build --platform linux/amd64 \
+#     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
+#     --build-arg CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:d96a05556ce50330ea1d1bf7c235cd8fccd3282d48565bd47152035c88fd45fc \
+#     -t newtonschool/judge0-newton-compiler:0.34 \
 #     compilers
 #
 ARG CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp

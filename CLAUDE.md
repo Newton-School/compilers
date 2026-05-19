@@ -57,7 +57,7 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   already provides the security boundary. Judge0's `IsolateJob` must
   propagate this env via `-E DOTNET_EnableWriteXorExecute` (isolate
   strips env by default).
-- **CircuitRun lives in Tier 13** as a digest-pinned dist-image artifact.
+- **CircuitRun lives in Tier 13** as a digest-pinned Docker Hub dist-image artifact.
   The compiler image mounts `/opt/circuitrun/dist` from `CIRCUITRUN_DIST_IMAGE`
   and runs its `install.sh`; do not copy a full standalone worker image here.
   The first production profile is Arduino Uno + Arduino C++ only.
@@ -130,7 +130,7 @@ docker buildx build --platform linux/arm64 \
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  --build-arg CIRCUITRUN_DIST_IMAGE=<ecr-circuitrun-dist-digest> \
+  --build-arg CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:d96a05556ce50330ea1d1bf7c235cd8fccd3282d48565bd47152035c88fd45fc \
   -t newtonschool/judge0-newton-compiler:0.34 \
   --load .
 ```
