@@ -58,21 +58,19 @@
 #
 # Multi-arch: amd64 + arm64 supported via TARGETARCH branching.
 # Build:
-#   # arm64 native dev path; requires a locally built arm64 CircuitRun dist image.
+#   # arm64 native dev path; uses the default multi-arch Docker Hub dist image digest.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     --build-arg CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp \
 #     -t newtonschool/judge0-newton-compiler:0.34-arm64 \
 #     compilers
 #
-#   # amd64 production path; consume the Docker Hub dist image by digest.
+#   # amd64 production path; uses the default Docker Hub dist image digest.
 #   docker buildx build --platform linux/amd64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     --build-arg CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:d96a05556ce50330ea1d1bf7c235cd8fccd3282d48565bd47152035c88fd45fc \
 #     -t newtonschool/judge0-newton-compiler:0.34 \
 #     compilers
 #
-ARG CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp
+ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:a3fa31a41b70d769009542c6b80f9cb0d0f72535771151420035555a6c898eec
 FROM ${CIRCUITRUN_DIST_IMAGE} AS circuitrun_dist
 
 FROM buildpack-deps:bookworm AS base
@@ -156,17 +154,7 @@ ENV BOX_ROOT=/var/local/lib/isolate
 # GCC 9.5.0 — frozen forever (preserves GCC-9-era student-code compatibility)
 ENV GCC_LEGACY_VERSION=9.5.0
 RUN set -xe && \
-    gcc_tarball="gcc-${GCC_LEGACY_VERSION}.tar.gz" && \
-    for mirror in \
-        "https://ftpmirror.gnu.org/gcc/gcc-${GCC_LEGACY_VERSION}" \
-        "https://ftp.gnu.org/gnu/gcc/gcc-${GCC_LEGACY_VERSION}" \
-        "https://mirrors.kernel.org/gnu/gcc/gcc-${GCC_LEGACY_VERSION}"; do \
-        if curl -fSsL --retry 3 --retry-delay 2 --connect-timeout 20 "${mirror}/${gcc_tarball}" -o /tmp/gcc.tar.gz; then \
-            break; \
-        fi; \
-        rm -f /tmp/gcc.tar.gz; \
-    done && \
-    test -s /tmp/gcc.tar.gz && \
+    curl -fSsL "https://ftpmirror.gnu.org/gcc/gcc-${GCC_LEGACY_VERSION}/gcc-${GCC_LEGACY_VERSION}.tar.gz" -o /tmp/gcc.tar.gz && \
     mkdir -p /tmp/gcc && tar -xf /tmp/gcc.tar.gz -C /tmp/gcc --strip-components=1 && \
     rm /tmp/gcc.tar.gz && \
     cd /tmp/gcc && \
@@ -236,8 +224,7 @@ RUN set -xe && \
 # binary can resolve at runtime.
 ENV FBC_VERSION=1.10.1
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    if [ "${target_arch}" = "amd64" ]; then \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
         curl -fSsL "http://archive.debian.org/debian/pool/main/n/ncurses/libtinfo5_6.2+20201114-2+deb11u2_amd64.deb" -o /tmp/libtinfo5.deb && \
         dpkg -i /tmp/libtinfo5.deb && \
         rm /tmp/libtinfo5.deb && \
@@ -246,7 +233,7 @@ RUN set -xe && \
         tar -xf /tmp/fbc.tar.gz -C /usr/local/fbc-${FBC_VERSION} --strip-components=1 && \
         rm /tmp/fbc.tar.gz ; \
     else \
-        echo "FreeBASIC not available for ${target_arch}; skipping" ; \
+        echo "FreeBASIC not available for ${TARGETARCH}; skipping" ; \
     fi
 
 # ════════════════════════════════════════════════════════════════════════
@@ -271,11 +258,10 @@ RUN set -xe && \
 # OpenJDK 21 LTS (Eclipse Temurin prebuilt)
 ENV JDK_VERSION=21.0.5+11
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    case "${target_arch}" in \
+    case "${TARGETARCH}" in \
         amd64) JDK_ARCH=x64 ;; \
         arm64) JDK_ARCH=aarch64 ;; \
-        *) echo "unsupported arch: ${target_arch}" && exit 1 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     JDK_FILE_VERSION="$(echo "${JDK_VERSION}" | tr '+' '_')" && \
     curl -fSsL "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-${JDK_VERSION}/OpenJDK21U-jdk_${JDK_ARCH}_linux_hotspot_${JDK_FILE_VERSION}.tar.gz" -o /tmp/jdk.tar.gz && \
@@ -303,11 +289,10 @@ RUN set -xe && \
 # Scala 3 (per-arch prebuilt tarball from scala/scala3 GitHub releases)
 ENV SCALA_VERSION=3.8.3
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    case "${target_arch}" in \
+    case "${TARGETARCH}" in \
         amd64) SCALA_ARCH=x86_64-pc-linux ;; \
         arm64) SCALA_ARCH=aarch64-pc-linux ;; \
-        *) echo "unsupported arch: ${target_arch}" && exit 1 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fSsL "https://github.com/scala/scala3/releases/download/${SCALA_VERSION}/scala3-${SCALA_VERSION}-${SCALA_ARCH}.tar.gz" -o /tmp/scala.tar.gz && \
     mkdir -p /usr/local/scala-${SCALA_VERSION} && \
@@ -323,11 +308,10 @@ RUN set -xe && \
 # Go (prebuilt)
 ENV GO_VERSION=1.23.4
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    case "${target_arch}" in \
+    case "${TARGETARCH}" in \
         amd64) GO_ARCH=amd64 ;; \
         arm64) GO_ARCH=arm64 ;; \
-        *) echo "unsupported arch: ${target_arch}" && exit 1 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fSsL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
     mkdir -p /usr/local/go-${GO_VERSION} && \
@@ -337,11 +321,10 @@ RUN set -xe && \
 # Rust (prebuilt static toolchain)
 ENV RUST_VERSION=1.83.0
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    case "${target_arch}" in \
+    case "${TARGETARCH}" in \
         amd64) RUST_ARCH=x86_64-unknown-linux-gnu ;; \
         arm64) RUST_ARCH=aarch64-unknown-linux-gnu ;; \
-        *) echo "unsupported arch: ${target_arch}" && exit 1 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fSsL "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RUST_ARCH}.tar.gz" -o /tmp/rust.tar.gz && \
     mkdir /tmp/rust && tar -xf /tmp/rust.tar.gz -C /tmp/rust --strip-components=1 && \
@@ -386,11 +369,10 @@ RUN set -xe && \
 # Node.js (prebuilt tarball, interpreter only)
 ENV NODE_VERSION=22.11.0
 RUN set -xe && \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    case "${target_arch}" in \
+    case "${TARGETARCH}" in \
         amd64) NODE_ARCH=linux-x64 ;; \
         arm64) NODE_ARCH=linux-arm64 ;; \
-        *) echo "unsupported arch: ${target_arch}" && exit 1 ;; \
+        *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fSsL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.xz" -o /tmp/node.tar.xz && \
     mkdir -p /usr/local/node-${NODE_VERSION} && \

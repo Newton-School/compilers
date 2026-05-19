@@ -123,14 +123,12 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  --build-arg CIRCUITRUN_DIST_IMAGE=circuitrun-dist:arduino-uno-arduino-cpp \
   -t newtonschool/judge0-newton-compiler:0.34-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  --build-arg CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:d96a05556ce50330ea1d1bf7c235cd8fccd3282d48565bd47152035c88fd45fc \
   -t newtonschool/judge0-newton-compiler:0.34 \
   --load .
 ```
