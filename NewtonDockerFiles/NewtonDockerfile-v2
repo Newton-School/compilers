@@ -70,7 +70,7 @@
 #     -t newtonschool/judge0-newton-compiler:0.34 \
 #     compilers
 #
-ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:a3fa31a41b70d769009542c6b80f9cb0d0f72535771151420035555a6c898eec
+ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:5c4c10015d75da860d287fd1bc21249f209a962a9887c2ab9dcbb7c201edfe77
 FROM ${CIRCUITRUN_DIST_IMAGE} AS circuitrun_dist
 
 FROM buildpack-deps:bookworm AS base
