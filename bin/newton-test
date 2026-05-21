@@ -390,7 +390,7 @@ EOF
   }
 }
 EOF
-        circuitrun-judge0-runner judge0-evaluate --board arduino-uno --language arduino-cpp --source src/main.ino --asset-dir artifacts < request.json
+        circuitrun-judge0-runner judge0-run --board arduino-uno --language arduino-cpp --source src/main.ino --asset-dir artifacts < request.json
     " "CIRCUITRUN_EVALUATE_ACCEPTED"
 else skip "CircuitRun Arduino Uno Arduino C++" "circuitrun-judge0-runner not installed"; fi
 
