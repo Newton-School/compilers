@@ -24,6 +24,10 @@
 #   on large hosts (EC2), killing dotnet with SIGXFSZ during runtime init.
 #   Disabling W^X uses a single RWX mapping; safe inside isolate which
 #   already provides the security boundary.
+# - 0.34: add CircuitRun Arduino Uno + Arduino C++ support from the
+#   digest-pinned CircuitRun dist image. The compiler image installs only the final
+#   Arduino profile payload, not the CircuitRun build toolchain or standalone
+#   worker filesystem.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -40,6 +44,7 @@
 #   Tier 10: Python ML pip install — most volatile
 #   Tier 11: Verilog (Icarus)
 #   Tier 12: C# / .NET (restored in 0.30)
+#   Tier 13: CircuitRun Arduino Uno + Arduino C++
 #
 # Cache-friendly editing rules:
 #   - Each language's version pin is an ENV directly above its RUN block.
@@ -53,11 +58,21 @@
 #
 # Multi-arch: amd64 + arm64 supported via TARGETARCH branching.
 # Build:
+#   # arm64 native dev path; uses the default multi-arch Docker Hub dist image digest.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.28-arm64 \
+#     -t newtonschool/judge0-newton-compiler:0.34-arm64 \
 #     compilers
 #
+#   # amd64 production path; uses the default Docker Hub dist image digest.
+#   docker buildx build --platform linux/amd64 \
+#     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
+#     -t newtonschool/judge0-newton-compiler:0.34 \
+#     compilers
+#
+ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:f66e72923b62c885e231a4b144279e25edd2d0134c45b8ce6aa7b6e3fbb049a8
+FROM ${CIRCUITRUN_DIST_IMAGE} AS circuitrun_dist
+
 FROM buildpack-deps:bookworm AS base
 
 ARG TARGETARCH
@@ -530,6 +545,42 @@ ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
     DOTNET_EnableWriteXorExecute=0
 
 # ════════════════════════════════════════════════════════════════════════
+# Tier 13 — CircuitRun embedded-systems runtime
+#
+# CircuitRun is built and smoke-tested in its own dist image, then mounted
+# into this compilers build as an immutable artifact. The mounted dist is not
+# persisted as a temporary layer; only install.sh's final /usr/local payload is
+# kept in the compiler image. The first production profile intentionally ships
+# only Arduino Uno + Arduino C++.
+# ════════════════════════════════════════════════════════════════════════
+
+RUN --mount=from=circuitrun_dist,source=/opt/circuitrun/dist,target=/tmp/circuitrun-dist,readonly \
+    set -xe && \
+    /tmp/circuitrun-dist/install.sh && \
+    arduino-cli version >/dev/null && \
+    circuitrun --help >/dev/null && \
+    circuitrun-judge0-runner --help >/dev/null && \
+    test -x /usr/local/bin/circuitrun-compile-arduino && \
+    test -x /usr/local/bin/circuitrun-backend-simavr && \
+    test -x /usr/local/bin/circuitrun-simavr-driver && \
+    test -f /usr/local/share/circuitrun/profile.json && \
+    test -f /usr/local/share/circuitrun/arduino15/library_index.json && \
+    test -f /usr/local/share/circuitrun/arduino15/package_index.json && \
+    test -d /usr/local/share/circuitrun/arduino15/packages/builtin/tools/ctags && \
+    test -d /usr/local/share/circuitrun/arduino15/packages/arduino/hardware/avr && \
+    test -d /usr/local/share/circuitrun/arduino15/packages/arduino/tools/avr-gcc && \
+    test ! -e /usr/local/bin/circuitrun-compile-pico-sdk && \
+    test ! -e /usr/local/bin/circuitrun-compile-esp-idf && \
+    test ! -e /usr/local/bin/circuitrun-rp2040js-driver && \
+    test ! -e /usr/local/bin/circuitrun-qemu-esp32-driver && \
+    test ! -e /usr/local/bin/circuitrun-idf.py && \
+    test ! -e /usr/local/bin/circuitrun-esptool.py && \
+    test ! -e /usr/local/bin/picotool && \
+    test ! -e /usr/local/share/circuitrun/pico-sdk && \
+    test ! -e /usr/local/share/circuitrun/esp-idf && \
+    test ! -e /usr/local/share/circuitrun/espressif
+
+# ════════════════════════════════════════════════════════════════════════
 # Final wiring
 # ════════════════════════════════════════════════════════════════════════
 
@@ -538,4 +589,4 @@ ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/lo
 LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
       org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
       org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised, trimmed)" \
-      org.opencontainers.image.version="0.30"
+      org.opencontainers.image.version="0.34"
