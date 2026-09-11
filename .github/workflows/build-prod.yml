@@ -1,25 +1,23 @@
-name: Build & push → production ECR
+name: Build & push (production)
 
-# Production ECR pushes are MANUAL ONLY. Two safety gates (mirrors
+# Production pushes are MANUAL ONLY. Two safety gates (mirrors
 # newton-marketing-web's deploy-prod.yml):
 #   1. The 'production' GitHub Environment requires a human reviewer to
 #      approve every run (configure in repo settings → Environments).
 #   2. The user must type "build" in the workflow_dispatch input as a
 #      typo-prevention step.
 #
-# Builds NewtonDockerFiles/NewtonDockerfile-v2 and pushes it to the
-# production ECR registry (account 405612465938, ap-south-1) as the
-# `compilers` repo. This is the base image judge0's NewtonDockerfile
-# builds on (currently pulled from Docker Hub) — pushing here does NOT by
-# itself change what judge0 builds FROM.
+# Builds NewtonDockerFiles/NewtonDockerfile-v2 and pushes it to Docker Hub
+# as newtonschool/judge0-newton-compiler — same repo as build-staging.yml;
+# Docker Hub has no separate staging/prod registry, so this workflow only
+# adds the review gate + typed confirmation for the "official" push.
 #
 # Expect this job to take 45–75 minutes (see repo CLAUDE.md) and to need
 # ≥100GB of free disk on the runner. If monkci-ubuntu-24.04-4 turns out too
 # small/slow for this specific build, bump to a bigger self-hosted tier.
 #
-# Required secrets on the `production` GitHub Environment:
-#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY — scoped IAM user with
-#   ecr:* push/pull/list on the `compilers` repo in 405612465938 only.
+# Required secrets: DOCKERHUB_USERNAME / DOCKERHUB_PASSWORD (org-level,
+# same ones open-internal-edison-proxy already uses).
 
 on:
   workflow_dispatch:
@@ -38,8 +36,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY: compilers
+  IMAGE_NAME: newtonschool/judge0-newton-compiler
 
 jobs:
   validate-confirmation:
@@ -64,16 +61,16 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          driver: docker
 
-      - name: Login to Amazon ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       # Self-hosted runner disk persists across runs, and this image alone
       # needs ~100GB free. Only clear cache/images older than a few days so
@@ -82,11 +79,6 @@ jobs:
         run: |
           docker builder prune -af --filter "until=72h" || true
           docker image prune -af --filter "until=72h" || true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
       - name: Resolve image tag
         id: tags
@@ -100,9 +92,9 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.sha }}
-            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.sha }}
+            ${{ env.IMAGE_NAME }}:latest
 
       - name: Summary
         run: |
-          echo "Pushed \`${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pushed \`${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
