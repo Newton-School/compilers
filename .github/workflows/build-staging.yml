@@ -7,9 +7,6 @@ concurrency:
   group: build-staging
   cancel-in-progress: true
 
-env:
-  IMAGE_NAME: newtonschool/judge0-newton-compiler
-
 jobs:
   build:
     runs-on: monkci-ubuntu-24.04-4
@@ -38,12 +35,12 @@ jobs:
           file: NewtonDockerFiles/NewtonDockerfile-v2
           push: true
           platforms: linux/amd64
-          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=newtonschool/judge0-newton-compiler:buildcache
+          cache-to: type=registry,ref=newtonschool/judge0-newton-compiler:buildcache,mode=max
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.sha }}
-            ${{ env.IMAGE_NAME }}:latest
+            newtonschool/judge0-newton-compiler:${{ steps.tags.outputs.sha }}
+            newtonschool/judge0-newton-compiler:latest
 
       - name: Summary
         run: |
-          echo "Pushed \`${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pushed \`newtonschool/judge0-newton-compiler:${{ steps.tags.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
