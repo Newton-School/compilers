@@ -1,10 +1,10 @@
-name: Trigger Staging Build
+name: Trigger Build
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: build-staging
+  group: build
   cancel-in-progress: true
 
 jobs:
