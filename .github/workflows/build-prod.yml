@@ -1,22 +1,5 @@
 name: Trigger Production Build
 
-# Production pushes are MANUAL ONLY (workflow_dispatch), gated by the
-# 'production' GitHub Environment's required reviewer (configure in repo
-# settings → Environments). Builds whatever ref the dispatch was run
-# against — no separate confirmation or ref input needed.
-#
-# Builds NewtonDockerFiles/NewtonDockerfile-v2 and pushes it to Docker Hub
-# as newtonschool/judge0-newton-compiler — same repo as build-staging.yml;
-# Docker Hub has no separate staging/prod registry, so this workflow only
-# adds the review gate for the "official" push.
-#
-# Expect this job to take 45–75 minutes (see repo CLAUDE.md) and to need
-# ≥100GB of free disk on the runner. If monkci-ubuntu-24.04-4 turns out too
-# small/slow for this specific build, bump to a bigger self-hosted tier.
-#
-# Required secrets: DOCKERHUB_USERNAME / DOCKERHUB_PASSWORD (org-level,
-# same ones open-internal-edison-proxy already uses).
-
 on:
   workflow_dispatch:
 
@@ -48,9 +31,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      # Self-hosted runner disk persists across runs, and this image alone
-      # needs ~100GB free. Only clear cache/images older than a few days so
-      # back-to-back builds still reuse layers.
       - name: Reclaim stale Docker build cache
         run: |
           docker builder prune -af --filter "until=72h" || true

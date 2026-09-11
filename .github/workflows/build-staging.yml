@@ -1,26 +1,5 @@
 name: Trigger Staging Build
 
-# Builds NewtonDockerFiles/NewtonDockerfile-v2 and pushes it to Docker Hub
-# as newtonschool/judge0-newton-compiler — this repo has never used AWS
-# ECR; it stays on Docker Hub, same as today. "staging" here just means
-# the low-friction, auto-triggered lane (no approval gate) — Docker Hub
-# has no separate staging/prod registry, so both this and build-prod.yml
-# push to the same repo.
-#
-# Expect this job to take 45–75 minutes (see repo CLAUDE.md) and to need
-# ≥100GB of free disk on the runner. If monkci-ubuntu-24.04-4 turns out too
-# small/slow for this specific build, bump to a bigger self-hosted tier.
-#
-# Triggers:
-#   - Auto: push to `master`
-#   - Auto (opt-in): push to any other branch whose HEAD commit message
-#     contains "[BUILD]" — mirrors the existing newton-api/newton-web
-#     CodeBuild convention so feature branches can be test-built on demand.
-#   - Manual: workflow_dispatch
-#
-# Required secrets: DOCKERHUB_USERNAME / DOCKERHUB_PASSWORD (org-level,
-# same ones open-internal-edison-proxy already uses).
-
 on:
   push:
     branches: ["**"]
@@ -47,10 +26,8 @@ jobs:
           elif [ "${{ github.ref }}" = "refs/heads/master" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           elif printf '%s' "${{ github.event.head_commit.message }}" | grep -qF '[BUILD]'; then
-            echo "  Commit message contains [BUILD] — building non-master branch."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "  No [BUILD] tag and not master — skipping."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -74,9 +51,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      # Self-hosted runner disk persists across runs, and this image alone
-      # needs ~100GB free. Only clear cache/images older than a few days so
-      # back-to-back builds still reuse layers.
       - name: Reclaim stale Docker build cache
         run: |
           docker builder prune -af --filter "until=72h" || true
