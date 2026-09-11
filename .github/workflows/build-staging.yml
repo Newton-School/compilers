@@ -1,4 +1,4 @@
-name: Build & push (staging)
+name: Trigger Staging Build
 
 # Builds NewtonDockerFiles/NewtonDockerfile-v2 and pushes it to Docker Hub
 # as newtonschool/judge0-newton-compiler — this repo has never used AWS
