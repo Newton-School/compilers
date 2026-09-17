@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.34-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.37-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -22,6 +22,7 @@
 # 0.33: added DOTNET_EnableWriteXorExecute=0 to compiler ENV — fixes
 # SIGXFSZ from .NET's W^X memfd+ftruncate allocator on large-RAM hosts.
 # 0.34: added CircuitRun Arduino Uno + Arduino C++ compiler-image smoke.
+# 0.37: added man (man-db) coverage for the Bash lane.
 #
 set -u
 
@@ -83,6 +84,31 @@ if [[ -n "$BASH_DIR" ]]; then
     t "Bash 5.2" bash \
       "echo 'echo $EXPECTED' > s.sh && '$BASH_DIR/bin/bash' s.sh"
 else skip "Bash" "no /usr/local/bash-*"; fi
+
+# Checked inline rather than via t(), because the output is a man page, not
+# "$EXPECTED". Don't assert on a rendered version string — bash's own .TH line
+# reads "GNU Bash 5.2", with no patch level; assert on `man -w` instead.
+if command -v man >/dev/null; then
+    MAN_ERR=""
+    MAN_PAGE="$(man -w bash 2>/dev/null)"
+    case "$MAN_PAGE" in
+        /usr/local/bash-*) ;;
+        *) MAN_ERR="man -w bash = '$MAN_PAGE', not the source-built prefix" ;;
+    esac
+    if [[ -z "$MAN_ERR" ]] && ! man ls 2>/dev/null | grep -q "list directory contents"; then
+        MAN_ERR="man ls did not render"
+    fi
+    if [[ -z "$MAN_ERR" ]] && ! whatis grep >/dev/null 2>&1; then
+        MAN_ERR="whatis grep failed — mandb index not reachable"
+    fi
+    if [[ -z "$MAN_ERR" ]]; then
+        printf "  \033[32mPASS\033[0m  man (man-db)\n"
+        PASS=$((PASS+1))
+    else
+        printf "  \033[31mFAIL\033[0m  man (man-db)  (%s)\n" "$MAN_ERR"
+        FAIL=$((FAIL+1)); FAILED_LANGS+=("man")
+    fi
+else skip "man" "man-db not installed"; fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "C / C++"
