@@ -31,6 +31,10 @@
 # - 0.37: add man-db so the Bash lane (judge0 id 46) can use `man`. The base
 #   already ships the pages; only the reader was missing. The mandb index is
 #   relocated under /usr because isolate does not mount /var.
+# - 0.38: repin CircuitRun dist to cap arduino-cli at --jobs 4 / GOMAXPROCS=4
+#   (circuitrun#6); the default spawned ~5 threads per host core and hit
+#   isolate's RLIMIT_NPROC on large nodes (`vfork: Resource temporarily
+#   unavailable`).
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -65,16 +69,16 @@
 #   # arm64 native dev path; uses the default multi-arch Docker Hub dist image digest.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.37-arm64 \
+#     -t newtonschool/judge0-newton-compiler:0.38-arm64 \
 #     compilers
 #
 #   # amd64 production path; uses the default Docker Hub dist image digest.
 #   docker buildx build --platform linux/amd64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.37 \
+#     -t newtonschool/judge0-newton-compiler:0.38 \
 #     compilers
 #
-ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:f66e72923b62c885e231a4b144279e25edd2d0134c45b8ce6aa7b6e3fbb049a8
+ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:9c10a3928601f863e74ee8cffae97fc45c6a8b57ac2a83a88a071eeea43d077f
 FROM ${CIRCUITRUN_DIST_IMAGE} AS circuitrun_dist
 
 FROM buildpack-deps:bookworm AS base
@@ -622,4 +626,4 @@ ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/lo
 LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
       org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
       org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised, trimmed)" \
-      org.opencontainers.image.version="0.37"
+      org.opencontainers.image.version="0.38"
