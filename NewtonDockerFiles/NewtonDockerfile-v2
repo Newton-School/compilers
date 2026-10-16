@@ -35,6 +35,11 @@
 #   (circuitrun#6); the default spawned ~5 threads per host core and hit
 #   isolate's RLIMIT_NPROC on large nodes (`vfork: Resource temporarily
 #   unavailable`).
+# - 0.39: add Tier 15 — flex/bison (lex/yacc) + libfl-dev + libbison-dev
+#   for the compiler-design lab lane (judge0 id 3010). Tier 11's build-dep
+#   purge had removed flex/bison from every image since 0.29; Tier 15
+#   re-installs them at the bottom instead of editing Tier 11, which would
+#   rebuild ~786 MB of layers below it.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -53,6 +58,7 @@
 #   Tier 12: C# / .NET (restored in 0.30)
 #   Tier 13: CircuitRun Arduino Uno + Arduino C++
 #   Tier 14: man pages (man-db) — Bash lane tooling
+#   Tier 15: flex / bison (lex/yacc) + libfl/liby — compiler-design lab
 #
 # Cache-friendly editing rules:
 #   - Each language's version pin is an ENV directly above its RUN block.
@@ -69,13 +75,13 @@
 #   # arm64 native dev path; uses the default multi-arch Docker Hub dist image digest.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.38-arm64 \
+#     -t newtonschool/judge0-newton-compiler:0.39-arm64 \
 #     compilers
 #
 #   # amd64 production path; uses the default Docker Hub dist image digest.
 #   docker buildx build --platform linux/amd64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.38 \
+#     -t newtonschool/judge0-newton-compiler:0.39 \
 #     compilers
 #
 ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:9c10a3928601f863e74ee8cffae97fc45c6a8b57ac2a83a88a071eeea43d077f
@@ -618,6 +624,65 @@ RUN set -xe \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ════════════════════════════════════════════════════════════════════════
+# Tier 15 — flex / bison (lex/yacc) — compiler-design lab toolchain
+#
+# Backs judge0 language id 3010 ("C + Lex/Yacc"): `flex` / `yacc -d`
+# generate C that GCC 9.5 (/usr/local/gcc-9.5.0, the compiler behind judge0
+# ids 50/54) compiles, linked against libfl (-lfl: default main + yywrap)
+# and liby (-ly: default main + yyerror).
+#
+# WHY this tier exists when Tier 0 already installs flex + bison: Tier 11
+# (Icarus Verilog) lists flex/bison as *build* deps and purges them, so
+# every image since 0.29 has shipped with no flex, bison, lex or yacc (and
+# libfl-dev / libbison-dev were never installed at all). From 0.39 on, THIS
+# tier owns flex, bison, m4, libfl and liby.
+#
+# Deliberately NOT fixed by dropping flex/bison from Tier 11's purge list:
+# editing Tier 11 invalidates Tiers 11-14 (Icarus, Mono, .NET, CircuitRun,
+# man-db — ~786 MB of compressed layers to rebuild, push and pull on every
+# node), while this appended tier is ~3.4 MB. Any later tier that needs
+# flex/bison as build deps must NOT purge them.
+#
+# Debian package versions are not pinned (a bookworm security update
+# would break the build); instead the major.minor series is asserted, so a
+# series change — which can change generated code and the diagnostics
+# students see — fails here rather than shipping silently. The self-test
+# links with the absolute GCC 9.5 path judge0 invokes, not bare `gcc`
+# (Debian's 12.2).
+# ════════════════════════════════════════════════════════════════════════
+
+ENV FLEX_SERIES=2.6 \
+    BISON_SERIES=3.8
+RUN set -xe \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends flex bison libfl-dev libbison-dev m4 \
+    && apt-mark manual flex bison libfl-dev libbison-dev m4 \
+    && test "$(flex --version | cut -d' ' -f2 | cut -d. -f1,2)" = "${FLEX_SERIES}" \
+    && test "$(bison --version | head -n1 | awk '{print $NF}' | cut -d. -f1,2)" = "${BISON_SERIES}" \
+    && for tool in flex bison lex yacc m4; do \
+         test "$(command -v ${tool})" = "/usr/bin/${tool}" || exit 1; \
+       done \
+    && test "$(readlink -f /usr/bin/lex)" = /usr/bin/flex \
+    && test "$(readlink -f /usr/bin/yacc)" = /usr/bin/bison.yacc \
+    && test -f "$(bison --print-datadir)/skeletons/yacc.c" \
+    && m4 --version >/dev/null \
+    && mkdir /tmp/lexyacc-selftest && cd /tmp/lexyacc-selftest \
+    && printf '%s\n' '%%' '[0-9]+  printf("<%s>", yytext);' '%%' > num.l \
+    && lex num.l \
+    && /usr/local/gcc-9.5.0/bin/gcc lex.yy.c -lfl -o num \
+    && test "$(echo a1b22 | ./num)" = 'a<1>b<22>' \
+    && printf '%s\n' '%{' '#include <stdio.h>' 'int yylex(void);' 'int yyerror(const char *);' '%}' \
+         '%token NUM' '%%' 'top: sum { printf("%d\n", $1); } ;' 'sum: NUM | sum NUM { $$ = $1 + $2; } ;' '%%' > sum.y \
+    && printf '%s\n' '%option noyywrap' '%{' '#include <stdlib.h>' '#include "y.tab.h"' '%}' \
+         '%%' '[0-9]+  { yylval = atoi(yytext); return NUM; }' '[ \t\n]  ;' '%%' > sum.l \
+    && yacc -d sum.y \
+    && flex sum.l \
+    && /usr/local/gcc-9.5.0/bin/gcc y.tab.c lex.yy.c -ly -o sum \
+    && test "$(echo 1 2 39 | ./sum)" = 42 \
+    && cd / && rm -rf /tmp/lexyacc-selftest \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ════════════════════════════════════════════════════════════════════════
 # Final wiring
 # ════════════════════════════════════════════════════════════════════════
 
@@ -626,4 +691,4 @@ ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/lo
 LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
       org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
       org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised, trimmed)" \
-      org.opencontainers.image.version="0.38"
+      org.opencontainers.image.version="0.39"

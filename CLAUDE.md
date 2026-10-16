@@ -2,9 +2,9 @@
 
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
-upstream artifact) and `newtonschool/judge0-newton-compiler:0.37` (Newton's
-modernised + trimmed artifact, which is what `Newton-School/judge0` actually
-consumes).
+upstream artifact) and `newtonschool/judge0-newton-compiler:<git-sha>`
+(Newton's modernised + trimmed artifact, label `0.39`, which is what
+`Newton-School/judge0` actually consumes, pinned by commit SHA).
 
 ## What's in the image
 
@@ -13,7 +13,8 @@ Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
 Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes),
 CircuitRun Arduino Uno Arduino C++, isolate v2,
-man-db (`man` for the Bash lane).
+man-db (`man` for the Bash lane),
+flex 2.6 + bison 3.8 (`lex` / `yacc`, libfl + liby — compiler-design lab).
 
 Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 
@@ -34,7 +35,8 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 - **Icarus Verilog lives in Tier 11** (added in 0.29, below the pip ML
   layer) — pure C/C++ source build, no per-arch branching. Backs judge0
   language id 3005. Build deps (autoconf/gperf/flex/bison) are installed
-  and purged in the same RUN.
+  and purged in the same RUN — which is why flex/bison need Tier 15 (below
+  and pitfall #12).
 - **C# / .NET lives in Tier 12** (added in 0.30, retuned in 0.32, W^X
   workaround added in 0.33). Mono 6.12.0.122 is a from-source build into
   `/usr/local/mono-<ver>` (legacy `.NET Framework 4.7`-era compat); .NET
@@ -76,8 +78,26 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   The compiler image mounts `/opt/circuitrun/dist` from `CIRCUITRUN_DIST_IMAGE`
   and runs its `install.sh`; do not copy a full standalone worker image here.
   The first production profile is Arduino Uno + Arduino C++ only.
+- **Tier 15 owns flex/bison/m4/libfl** (added in 0.39; liby too). It backs
+  judge0 language id 3010 (C + Lex/Yacc, the compiler-design lab): apt
+  `flex bison libfl-dev libbison-dev m4`, `apt-mark manual`'d. Tier 0 also
+  lists flex/bison, but Tier 11 purges them, so every image from 0.29 to
+  0.38 shipped with no `flex`/`bison`/`lex`/`yacc`, and libfl-dev /
+  libbison-dev had never been installed. The fix is the appended tier, not
+  an edit to Tier 11's purge list (that would rebuild Tiers 11-14, ~786 MB
+  of layers; Tier 15 is ~3.4 MB compressed). Debian versions are not
+  pinned (a bookworm security update would break the build); the RUN
+  asserts the series instead (`FLEX_SERIES=2.6`, `BISON_SERIES=3.8`),
+  plus `lex` → `flex`, `yacc` → `bison.yacc` (= `bison -y`), the bison
+  skeletons dir and `m4`, and self-tests a lex-only program linked with
+  `-lfl` and a yacc program linked with `-ly` using
+  `/usr/local/gcc-9.5.0/bin/gcc` — the absolute path judge0's 3010 build
+  step uses (bare `gcc` is Debian's 12.2). `-lfl` supplies `main()` +
+  `yywrap()`, `-ly` supplies `main()` + `yyerror()`; link `-ly` before
+  `-lfl` so a lex+yacc program without its own `main()` gets liby's
+  (calls `yyparse`) rather than libfl's (calls only `yylex`).
 
-See `git log` for the 0.26 → 0.37 trim/revive chronology if you need to know
+See `git log` for the 0.26 → 0.39 trim/revive chronology if you need to know
 when a particular toolchain came or went.
 
 ## Repo layout you will care about
@@ -121,9 +141,11 @@ when a particular toolchain came or went.
 
 ### Layer ordering rule
 
-Tier 0 (foundation, frozen) at the top, tier 10 (Python ML pip install,
-volatile) at the bottom. Editing the Python ML package list invalidates
-ONE layer; bumping a language version cascades to everything below it.
+Tier 0 (foundation, frozen) at the top, the newest / most volatile tiers
+at the bottom (currently Tier 15). Editing a tier invalidates its layer
+and every tier below it, so the Python ML pip list (Tier 10) now also
+rebuilds Tiers 11-15, and bumping a language version cascades to
+everything below it.
 **Append new languages at the bottom; don't insert in the middle.**
 
 **Per-language ENV pins, not a mega-ENV.** Each language's version ENV
@@ -138,13 +160,13 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.37-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.39-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.37 \
+  -t newtonschool/judge0-newton-compiler:0.39 \
   --load .
 ```
 
@@ -157,15 +179,34 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.37-arm64 \
+  newtonschool/judge0-newton-compiler:0.39-arm64 \
   bash /work/bin/newton-test
 ```
 
-Expected after 0.37: C# lanes, CircuitRun Arduino Uno support, plus `man`:
-24 PASS / 0 FAIL / 2 SKIP on arm64 (NASM and FreeBASIC are amd64-only
-upstream and skip on arm64). 26 PASS / 0 FAIL / 0 SKIP on amd64.
+0.39 has 28 cases: C# lanes, CircuitRun Arduino Uno support, `man`, plus
+two flex/bison cases (lex-only with `-lfl`; lex+yacc calculator with `-ly`).
+NASM and FreeBASIC are amd64-only upstream and SKIP on arm64. The
+flex/bison cases have no presence guard on purpose — a missing `lex`,
+`yacc`, libfl or liby is a FAIL, never a SKIP (see pitfall #12).
 
-If this isn't green, DON'T tag/push.
+The target is every case PASS, but one failure is pre-existing on every
+arch: the CircuitRun case fails with ``missing field `embedded_system` ``
+(its inline `request.json` predates the dist's request schema; same on the
+0.38 image `da70ed9`, not caused by Tier 15). Counts today:
+
+- native amd64 (prod): 27 PASS / 1 FAIL / 0 SKIP expected — not measured
+  for 0.39.
+- amd64 emulated on an Apple Silicon Mac: 26 / 2 / 0, measured (published
+  0.38 image + Tier 15). The extra FAIL is `C# (Mono legacy)` aborting in
+  Mono's x86 codegen (`offset == (gint32)offset`) — on master too, seen
+  only under emulation.
+- arm64 native: 25 / 1 / 2 expected — not measured for 0.39 (no arm64
+  0.39 image was built).
+
+Don't tag/push if anything fails other than the CircuitRun case above
+(plus the Mono abort when emulating). That waiver is temporary — drop it
+once the CircuitRun `request.json` in `bin/newton-test` gets an
+`embedded_system` field.
 
 ## Common pitfalls
 
@@ -207,6 +248,22 @@ If this isn't green, DON'T tag/push.
     line reads `"GNU Bash 5.2"` with no patch level, so don't assert on
     `5.2.37` in rendered output — assert on `man -w bash` resolving into
     `/usr/local/bash-*` instead.
+12. **Tier 11 purges flex, bison and autoconf (and automake with it).**
+    Icarus Verilog's RUN installs `autoconf gperf flex bison` as build deps
+    and `apt-get purge`s them, which also removes the copies Tier 0
+    installed — and automake with them, since it depends on autoconf.
+    So flex/bison silently vanished from every image
+    from 0.29 to 0.38, and nothing noticed until the compiler-design lab
+    needed them. autoconf/automake are still absent (no lane needs them
+    today). Tier 15 owns flex/bison/m4/libfl/liby now: don't "fix" this by
+    editing Tier 11 (cascading ~786 MB rebuild), and any new tier that
+    needs flex/bison as build deps must not purge them — `apt-mark manual`
+    does not stop an explicit `apt-get purge`. Assert presence in the tier
+    that needs a tool, and make its smoke test FAIL rather than SKIP when
+    the tool is missing. CI (`.github/workflows/build.yml`) only builds and
+    pushes; it never runs `bin/newton-test`, so a later purge would ship
+    green unless someone runs the smoke test by hand before repinning
+    judge0.
 
 ## Image is published as
 
@@ -216,11 +273,14 @@ If this isn't green, DON'T tag/push.
   `judge0-newton-compiler:<git-sha>` and `:latest`. The `0.3x` numbering
   below is a documentation convention carried in the Dockerfile's
   `org.opencontainers.image.version` label — it is not what CI pushes.
-- Current label: **`0.37`**. Earlier: 0.25 → 0.34 in this repo's history.
-  Note `Newton-School/judge0` pins `judge0-newton-compiler:0.36` in its
-  `NewtonDockerfile`, a tag with no corresponding commit here — 0.37 is
-  numbered above it so the label never reads as older than what is
-  deployed. Worth reconciling separately.
+- Current label: **`0.39`** (Tier 15 flex/bison). Earlier: 0.25 → 0.38 in
+  this repo's history (0.35/0.36 were skipped here: 0.37 was numbered
+  above a `:0.36` tag judge0 once pinned, so the label never read as
+  older than what was deployed).
+- `Newton-School/judge0` pins this image by commit SHA in its
+  `NewtonDockerfile` `FROM` line (e.g. `judge0-newton-compiler:da70ed9…`
+  = label 0.38), so a label bump here changes nothing in prod until judge0
+  repins to the new SHA.
 
 ## Production deploys
 
