@@ -109,7 +109,7 @@ when a particular toolchain came or went.
 │   ├── NewtonDockerfile-v1             # 0.25 production: layered on judge0/compilers:1.4.0
 │   └── NewtonDockerfile-v2             # 0.26+ production: standalone on bookworm — USE THIS
 ├── bin/
-│   ├── newton-test                     # 40+ language smoke test (must pass before tagging)
+│   ├── newton-test                     # 28-case smoke test (must pass before tagging)
 │   ├── run-tests / debug-tests         # upstream tests, mostly unused
 ├── extra/                              # upstream "extra" flavour, ignored
 ├── slim/                               # upstream "slim" flavour, ignored
@@ -194,8 +194,8 @@ arch: the CircuitRun case fails with ``missing field `embedded_system` ``
 (its inline `request.json` predates the dist's request schema; same on the
 0.38 image `da70ed9`, not caused by Tier 15). Counts today:
 
-- native amd64 (prod): 27 PASS / 1 FAIL / 0 SKIP expected — not measured
-  for 0.39.
+- native amd64 (prod): 27 PASS / 1 FAIL / 0 SKIP, measured on the build
+  box for 0.39 (`f8f215e`). Mono passes natively.
 - amd64 emulated on an Apple Silicon Mac: 26 / 2 / 0, measured (published
   0.38 image + Tier 15). The extra FAIL is `C# (Mono legacy)` aborting in
   Mono's x86 codegen (`offset == (gint32)offset`) — on master too, seen
@@ -278,9 +278,11 @@ once the CircuitRun `request.json` in `bin/newton-test` gets an
   above a `:0.36` tag judge0 once pinned, so the label never read as
   older than what was deployed).
 - `Newton-School/judge0` pins this image by commit SHA in its
-  `NewtonDockerfile` `FROM` line (e.g. `judge0-newton-compiler:da70ed9…`
-  = label 0.38), so a label bump here changes nothing in prod until judge0
-  repins to the new SHA.
+  `NewtonDockerfile` `FROM` line (e.g. `judge0-newton-compiler:f8f215e…`
+  = label 0.39), so a label bump here changes nothing in prod until judge0
+  repins to the new SHA. The 0.39 image was built by hand on the build box
+  from this branch and pushed as `:f8f215eac832…` and `:0.39` (digest
+  `sha256:e7ffeab5…`); prod's public judge0 stack runs on it.
 
 ## Production deploys
 
