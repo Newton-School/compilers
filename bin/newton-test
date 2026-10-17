@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.37-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.39-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -23,6 +23,8 @@
 # SIGXFSZ from .NET's W^X memfd+ftruncate allocator on large-RAM hosts.
 # 0.34: added CircuitRun Arduino Uno + Arduino C++ compiler-image smoke.
 # 0.37: added man (man-db) coverage for the Bash lane.
+# 0.39: added flex/bison (lex/yacc) coverage for the compiler-design lab
+# lane (judge0 id 3010) — fails, never skips, when the tools are missing.
 #
 set -u
 
@@ -122,6 +124,90 @@ if [[ -n "$GCC9_DIR" ]]; then
     t "C (GCC 9.x)" gcc9c "$WRITE_C && $GCC9_DIR/bin/gcc main.c -o a.out && ./a.out"
     t "C++ (GCC 9.x)" gcc9cpp "$WRITE_CPP && $GCC9_DIR/bin/g++ main.cpp -o a.out && LD_LIBRARY_PATH=$GCC9_DIR/lib64 ./a.out"
 else skip "GCC 9.x" "not installed"; fi
+
+# ────────────────────────────────────────────────────────────────────────
+section "Compiler construction (flex / bison)"
+# ────────────────────────────────────────────────────────────────────────
+# No `command -v` / resolve() guard on purpose: Tier 11's build-dep purge
+# silently removed flex/bison from every image from 0.29 to 0.38, so a
+# missing tool must FAIL here, never SKIP. GCC is called by the exact
+# absolute path judge0 lane 3010 (newton-cdlab-build) uses; bare `gcc` is
+# Debian's 12.2. These programs print their own output rather than
+# "$EXPECTED", so each body compares exactly and echoes "$EXPECTED" only
+# on a match (on a mismatch it prints want/got and exits 1).
+LEXYACC_CC=/usr/local/gcc-9.5.0/bin/gcc
+
+# Lex only: the spec has no main() and no yywrap(), so -lfl (libfl-dev)
+# must supply both; libfl's main() runs yylex() over stdin. Bare `lex`
+# covers the /usr/bin/lex -> flex symlink.
+t "Lex only (lex + GCC 9.5, -lfl)" lexonly "
+    cat > tokens.l <<'EOF'
+%%
+[0-9]+                  printf(\"NUM(%s)\", yytext);
+[A-Za-z_][A-Za-z0-9_]*  printf(\"ID(%s)\", yytext);
+[-+*/=;]                printf(\"OP(%s)\", yytext);
+[ \t]+                  putchar(' ');
+%%
+EOF
+    lex tokens.l || exit 1
+    $LEXYACC_CC lex.yy.c -o tokens -lfl || exit 1
+    got=\"\$(printf 'x1 = 42 + y;\n' | ./tokens)\"
+    want='ID(x1) OP(=) NUM(42) OP(+) ID(y)OP(;)'
+    [[ \"\$got\" == \"\$want\" ]] || { printf 'want: %s\ngot:  %s\n' \"\$want\" \"\$got\"; exit 1; }
+    echo '$EXPECTED'"
+
+# Lex + Yacc, the lab's pipeline: `yacc -d` (-> bison.yacc) emits y.tab.h,
+# which the scanner includes; then flex; then GCC 9.5. No main(), yyerror()
+# or yywrap() anywhere: -ly (libbison-dev) supplies main() + yyerror() and
+# -lfl supplies yywrap(). -ly must come first so main() is liby's (which
+# calls yyparse), not libfl's (which only calls yylex) — the same order
+# newton-cdlab-build links in.
+t "Lex + Yacc calculator (yacc -d + flex + GCC 9.5, -ly -lfl)" lexyacc "
+    cat > calc.y <<'EOF'
+%{
+#include <stdio.h>
+int yylex(void);
+int yyerror(const char *);
+%}
+%token NUM
+%left '+' '-'
+%left '*' '/'
+%nonassoc UMINUS
+%%
+lines : /* empty */
+      | lines line
+      ;
+line  : '\n'
+      | expr '\n'                { printf(\"%d\n\", \$1); }
+      ;
+expr  : NUM
+      | expr '+' expr            { \$\$ = \$1 + \$3; }
+      | expr '-' expr            { \$\$ = \$1 - \$3; }
+      | expr '*' expr            { \$\$ = \$1 * \$3; }
+      | expr '/' expr            { \$\$ = \$1 / \$3; }
+      | '-' expr %prec UMINUS    { \$\$ = -\$2; }
+      | '(' expr ')'             { \$\$ = \$2; }
+      ;
+%%
+EOF
+    cat > calc.l <<'EOF'
+%{
+#include <stdlib.h>
+#include \"y.tab.h\"
+%}
+%%
+[0-9]+      { yylval = atoi(yytext); return NUM; }
+[-+*/()\n]  { return yytext[0]; }
+[ \t]+      ;
+%%
+EOF
+    yacc -d calc.y || exit 1
+    flex calc.l || exit 1
+    $LEXYACC_CC y.tab.c lex.yy.c -o calc -ly -lfl || exit 1
+    got=\"\$(printf '1 + 2 * 3\n(1 + 2) * 3\n-7 + 20 / 3\n' | ./calc | tr '\n' ' ')\"
+    want='7 9 -1 '
+    [[ \"\$got\" == \"\$want\" ]] || { printf 'want: %s\ngot:  %s\n' \"\$want\" \"\$got\"; exit 1; }
+    echo '$EXPECTED'"
 
 # ────────────────────────────────────────────────────────────────────────
 section "JVM"
