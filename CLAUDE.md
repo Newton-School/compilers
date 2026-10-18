@@ -189,24 +189,23 @@ NASM and FreeBASIC are amd64-only upstream and SKIP on arm64. The
 flex/bison cases have no presence guard on purpose — a missing `lex`,
 `yacc`, libfl or liby is a FAIL, never a SKIP (see pitfall #12).
 
-The target is every case PASS, but one failure is pre-existing on every
-arch: the CircuitRun case fails with ``missing field `embedded_system` ``
-(its inline `request.json` predates the dist's request schema; same on the
-0.38 image `da70ed9`, not caused by Tier 15). Counts today:
+The target is every case PASS. The CircuitRun case's inline `request.json`
+mirrors judge0's `STDIN_CIRCUITRUN_ARDUINO` fixture (judge0
+`bin/newton-smoke-test`); when the dist's request schema changes, update
+both. It checks for `CIRCUITRUN_EVALUATE_ACCEPTED` via `t`'s optional
+fourth argument (expected output; default `Hello, Newton!`). Counts today:
 
-- native amd64 (prod): 27 PASS / 1 FAIL / 0 SKIP, measured on the build
-  box for 0.39 (`f8f215e`). Mono passes natively.
-- amd64 emulated on an Apple Silicon Mac: 26 / 2 / 0, measured (published
-  0.38 image + Tier 15). The extra FAIL is `C# (Mono legacy)` aborting in
-  Mono's x86 codegen (`offset == (gint32)offset`) — on master too, seen
-  only under emulation.
-- arm64 native: 25 / 1 / 2 expected — not measured for 0.39 (no arm64
+- native amd64 (prod): 28 / 0 / 0 expected. 0.39 (`f8f215e`) measured
+  27 / 1 / 0 on the build box, the FAIL being CircuitRun's out-of-date
+  `request.json`; that case now passes against the same image (below).
+- amd64 emulated on an Apple Silicon Mac: 27 / 1 / 0, measured on the
+  published 0.39 image (`e7ffeab5…`). The FAIL is `C# (Mono legacy)`
+  aborting in Mono's x86 codegen (`offset == (gint32)offset`), seen only
+  under emulation; Mono passes natively.
+- arm64 native: 26 / 0 / 2 expected — not measured for 0.39 (no arm64
   0.39 image was built).
 
-Don't tag/push if anything fails other than the CircuitRun case above
-(plus the Mono abort when emulating). That waiver is temporary — drop it
-once the CircuitRun `request.json` in `bin/newton-test` gets an
-`embedded_system` field.
+Don't tag/push if anything fails (except the Mono abort when emulating).
 
 ## Common pitfalls
 
