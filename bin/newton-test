@@ -514,7 +514,7 @@ EOF
 EOF
         circuitrun-judge0-runner judge0-run --board arduino-uno --language arduino-cpp --source src/main.ino --asset-dir artifacts < request.json
     " "CIRCUITRUN_EVALUATE_ACCEPTED"
-    # Compile step, then run step, with judge0 id 3011's commands.
+    # Runs id 3011's commands; request.json mirrors judge0's STDIN_CIRCUITRUN_ESP32_S3.
     t "CircuitRun ESP32-S3 Arduino C++" circuitrun-esp32-s3 "
         cat > main.ino <<'EOF'
 void setup() {
@@ -558,7 +558,7 @@ EOF
     }
   ],
   \"artifacts\": {
-    \"enabled\": [\"result.json\", \"trace.ndjson\", \"waveform.json\", \"serial.log\"]
+    \"enabled\": [\"result.json\", \"waveform.json\", \"serial.log\"]
   },
   \"limits\": {
     \"max_wall_ms\": 20000

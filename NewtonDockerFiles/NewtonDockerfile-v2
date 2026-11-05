@@ -42,7 +42,10 @@
 #   rebuild ~786 MB of layers below it.
 # - 0.40: repin CircuitRun dist to the Arduino Uno + ESP32-S3 DevKitC-1
 #   profile (judge0 id 3011 beside 3009). The ESP32-S3 runs on the dist's
-#   patched Espressif QEMU, whose shared libraries Tier 13 installs.
+#   patched Espressif QEMU, whose shared libraries Tier 13 installs. For
+#   3009 the new dist adds Servo.h, and a Submit whose trace passes its
+#   1024 KB file limit grades wrong_answer (output-too-large) instead of
+#   runtime_error.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -572,6 +575,8 @@ ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
 # patched QEMU, which links libgcrypt, glib, libseccomp and zlib from apt.
 # The dist trims the ESP32 Arduino core to the ESP32-S3's Xtensa toolchain
 # and libraries; the other ESP chips' toolchains are unused and large.
+# CI never runs bin/newton-test, so the build itself compiles and runs one
+# ESP32-S3 sketch with judge0 id 3011's commands.
 # ════════════════════════════════════════════════════════════════════════
 
 RUN --mount=from=circuitrun_dist,source=/opt/circuitrun/dist,target=/tmp/circuitrun-dist,readonly \
@@ -611,6 +616,15 @@ RUN --mount=from=circuitrun_dist,source=/opt/circuitrun/dist,target=/tmp/circuit
     test ! -e /usr/local/share/circuitrun/pico-sdk && \
     test ! -e /usr/local/share/circuitrun/esp-idf && \
     test ! -e /usr/local/share/circuitrun/espressif && \
+    test -f /usr/local/share/circuitrun/share/third-party/esp-idf/LICENSE && \
+    mkdir /tmp/esp32-s3-selftest && cd /tmp/esp32-s3-selftest && \
+    printf 'void setup() {\n  Serial.begin(115200);\n  Serial.println("ready");\n}\n\nvoid loop() {}\n' > main.ino && \
+    circuitrun-judge0-runner judge0-compile --board esp32-s3 --language arduino-cpp --source main.ino && \
+    printf '%s' '{"schema_version":"2026-05-01","mode":"evaluate","embedded_system":{"schema_version":"2026-05-01","parts":[],"nets":[]},"scenario":{"duration_ms":100,"stimuli":[]},"checks":[{"type":"serial-contains","id":"ready","port":"Serial","text":"ready"}],"artifacts":{"enabled":["result.json"]},"context":{"question_id":"tier-13","test_case_id":"esp32-s3"}}' \
+        | circuitrun-judge0-runner judge0-run --board esp32-s3 --language arduino-cpp --source main.ino \
+            --firmware build/firmware.bin --firmware-format bin --asset-dir artifacts \
+        | grep -q CIRCUITRUN_EVALUATE_ACCEPTED && \
+    cd / && rm -rf /tmp/esp32-s3-selftest && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ════════════════════════════════════════════════════════════════════════
@@ -658,7 +672,7 @@ RUN set -xe \
 #
 # Deliberately NOT fixed by dropping flex/bison from Tier 11's purge list:
 # editing Tier 11 invalidates Tiers 11-14 (Icarus, Mono, .NET, CircuitRun,
-# man-db — ~786 MB of compressed layers to rebuild, push and pull on every
+# man-db — ~950 MB of compressed layers to rebuild, push and pull on every
 # node), while this appended tier is ~3.4 MB. Any later tier that needs
 # flex/bison as build deps must NOT purge them.
 #
