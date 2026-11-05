@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.39-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.40-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -25,6 +25,8 @@
 # 0.37: added man (man-db) coverage for the Bash lane.
 # 0.39: added flex/bison (lex/yacc) coverage for the compiler-design lab
 # lane (judge0 id 3010) — fails, never skips, when the tools are missing.
+# 0.40: added CircuitRun ESP32-S3 + Arduino C++ coverage (judge0 id 3011) —
+# fails, never skips, when the Uno is present and the ESP32-S3 isn't.
 #
 set -u
 
@@ -512,7 +514,68 @@ EOF
 EOF
         circuitrun-judge0-runner judge0-run --board arduino-uno --language arduino-cpp --source src/main.ino --asset-dir artifacts < request.json
     " "CIRCUITRUN_EVALUATE_ACCEPTED"
-else skip "CircuitRun Arduino Uno Arduino C++" "circuitrun-judge0-runner not installed"; fi
+    # Compile step, then run step, with judge0 id 3011's commands.
+    t "CircuitRun ESP32-S3 Arduino C++" circuitrun-esp32-s3 "
+        cat > main.ino <<'EOF'
+void setup() {
+  Serial.begin(115200);
+  pinMode(48, OUTPUT);
+  Serial.println(\"ready\");
+}
+
+void loop() {
+  digitalWrite(48, HIGH);
+  delay(100);
+  digitalWrite(48, LOW);
+  delay(100);
+}
+EOF
+        cat > request.json <<'EOF'
+{
+  \"schema_version\": \"2026-05-01\",
+  \"mode\": \"evaluate\",
+  \"embedded_system\": {
+    \"schema_version\": \"2026-05-01\",
+    \"parts\": [],
+    \"nets\": []
+  },
+  \"scenario\": {
+    \"duration_ms\": 1000,
+    \"stimuli\": []
+  },
+  \"checks\": [
+    {
+      \"type\": \"pin-toggled\",
+      \"id\": \"led-blinks\",
+      \"pin\": \"GPIO48\",
+      \"min_count\": 2
+    },
+    {
+      \"type\": \"serial-contains\",
+      \"id\": \"ready-printed\",
+      \"port\": \"Serial\",
+      \"text\": \"ready\"
+    }
+  ],
+  \"artifacts\": {
+    \"enabled\": [\"result.json\", \"trace.ndjson\", \"waveform.json\", \"serial.log\"]
+  },
+  \"limits\": {
+    \"max_wall_ms\": 20000
+  },
+  \"context\": {
+    \"question_id\": \"compiler-image-smoke\",
+    \"test_case_id\": \"esp32-s3-arduino-cpp\"
+  }
+}
+EOF
+        circuitrun-judge0-runner judge0-compile --board esp32-s3 --language arduino-cpp --source main.ino &&
+        circuitrun-judge0-runner judge0-run --board esp32-s3 --language arduino-cpp --source main.ino --firmware build/firmware.bin --firmware-format bin --asset-dir artifacts < request.json
+    " "CIRCUITRUN_EVALUATE_ACCEPTED"
+else
+    skip "CircuitRun Arduino Uno Arduino C++" "circuitrun-judge0-runner not installed"
+    skip "CircuitRun ESP32-S3 Arduino C++" "circuitrun-judge0-runner not installed"
+fi
 
 # ────────────────────────────────────────────────────────────────────────
 section "Sandbox"

@@ -3,7 +3,7 @@
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
 upstream artifact) and `newtonschool/judge0-newton-compiler:<git-sha>`
-(Newton's modernised + trimmed artifact, label `0.39`, which is what
+(Newton's modernised + trimmed artifact, label `0.40`, which is what
 `Newton-School/judge0` actually consumes, pinned by commit SHA).
 
 ## What's in the image
@@ -12,7 +12,8 @@ GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
 Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
 Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes),
-CircuitRun Arduino Uno Arduino C++, isolate v2,
+CircuitRun Arduino Uno and ESP32-S3 Arduino C++ (patched Espressif QEMU),
+isolate v2,
 man-db (`man` for the Bash lane),
 flex 2.6 + bison 3.8 (`lex` / `yacc`, libfl + liby — compiler-design lab).
 
@@ -77,7 +78,17 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
 - **CircuitRun lives in Tier 13** as a digest-pinned Docker Hub dist-image artifact.
   The compiler image mounts `/opt/circuitrun/dist` from `CIRCUITRUN_DIST_IMAGE`
   and runs its `install.sh`; do not copy a full standalone worker image here.
-  The first production profile is Arduino Uno + Arduino C++ only.
+  The profile is `arduino-uno-esp32-s3-arduino-cpp`: Arduino Uno (judge0
+  id 3009) and ESP32-S3 DevKitC-1 (id 3011), both Arduino C++. The
+  ESP32-S3 runs on the dist's patched QEMU
+  (`/usr/local/share/circuitrun/qemu`), which links `libgcrypt20`,
+  `libglib2.0-0`, `libseccomp2` and `zlib1g`; Tier 13 installs them
+  (`apt-mark manual`'d) and checks that `qemu-system-xtensa --version`
+  runs. On arm64 the dist installs 823 MB under `/usr/local/share/circuitrun`
+  (about 260 MB gzipped with its `bin/circuitrun*`) against the Uno-only
+  dist's 347 MB. Tier 13 also asserts the ESP32 Arduino core holds only the
+  ESP32-S3's two tools dirs (`esp-x32`, `esp32s3-libs`) and that the
+  classic-ESP32 ESP-IDF and Pico SDK pieces are absent.
 - **Tier 15 owns flex/bison/m4/libfl** (added in 0.39; liby too). It backs
   judge0 language id 3010 (C + Lex/Yacc, the compiler-design lab): apt
   `flex bison libfl-dev libbison-dev m4`, `apt-mark manual`'d. Tier 0 also
@@ -97,7 +108,7 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   `-lfl` so a lex+yacc program without its own `main()` gets liby's
   (calls `yyparse`) rather than libfl's (calls only `yylex`).
 
-See `git log` for the 0.26 → 0.39 trim/revive chronology if you need to know
+See `git log` for the 0.26 → 0.40 trim/revive chronology if you need to know
 when a particular toolchain came or went.
 
 ## Repo layout you will care about
@@ -160,13 +171,13 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.39-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.40-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.39 \
+  -t newtonschool/judge0-newton-compiler:0.40 \
   --load .
 ```
 
@@ -179,31 +190,35 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.39-arm64 \
+  newtonschool/judge0-newton-compiler:0.40-arm64 \
   bash /work/bin/newton-test
 ```
 
-0.39 has 28 cases: C# lanes, CircuitRun Arduino Uno support, `man`, plus
+0.40 has 29 cases: C# lanes, CircuitRun Arduino Uno and ESP32-S3, `man`, plus
 two flex/bison cases (lex-only with `-lfl`; lex+yacc calculator with `-ly`).
 NASM and FreeBASIC are amd64-only upstream and SKIP on arm64. The
 flex/bison cases have no presence guard on purpose — a missing `lex`,
 `yacc`, libfl or liby is a FAIL, never a SKIP (see pitfall #12).
 
-The target is every case PASS. The CircuitRun case's inline `request.json`
+The target is every case PASS. The Uno case's inline `request.json`
 mirrors judge0's `STDIN_CIRCUITRUN_ARDUINO` fixture (judge0
 `bin/newton-smoke-test`); when the dist's request schema changes, update
-both. It checks for `CIRCUITRUN_EVALUATE_ACCEPTED` via `t`'s optional
-fourth argument (expected output; default `Hello, Newton!`). Counts today:
+both. The ESP32-S3 case runs judge0 id 3011's two commands: `judge0-compile`
+writes `build/firmware.bin`, then `judge0-run` simulates it. It has no
+presence guard of its own, so an image with the Uno and without the
+ESP32-S3 FAILs. Both check for `CIRCUITRUN_EVALUATE_ACCEPTED` via `t`'s
+optional fourth argument (expected output; default `Hello, Newton!`).
+Counts today:
 
-- native amd64 (prod): 28 / 0 / 0 expected. 0.39 (`f8f215e`) measured
+- native amd64 (prod): 29 / 0 / 0 expected. 0.39 (`f8f215e`) measured
   27 / 1 / 0 on the build box, the FAIL being CircuitRun's out-of-date
   `request.json`; that case now passes against the same image (below).
 - amd64 emulated on an Apple Silicon Mac: 27 / 1 / 0, measured on the
   published 0.39 image (`e7ffeab5…`). The FAIL is `C# (Mono legacy)`
   aborting in Mono's x86 codegen (`offset == (gint32)offset`), seen only
   under emulation; Mono passes natively.
-- arm64 native: 26 / 0 / 2 expected — not measured for 0.39 (no arm64
-  0.39 image was built).
+- arm64 native: 27 / 0 / 2 expected — not measured for 0.39 or 0.40 (no
+  arm64 image was built).
 
 Don't tag/push if anything fails (except the Mono abort when emulating).
 
@@ -272,7 +287,7 @@ Don't tag/push if anything fails (except the Mono abort when emulating).
   `judge0-newton-compiler:<git-sha>` and `:latest`. The `0.3x` numbering
   below is a documentation convention carried in the Dockerfile's
   `org.opencontainers.image.version` label — it is not what CI pushes.
-- Current label: **`0.39`** (Tier 15 flex/bison). Earlier: 0.25 → 0.38 in
+- Current label: **`0.40`** (CircuitRun ESP32-S3). Earlier: 0.25 → 0.39 in
   this repo's history (0.35/0.36 were skipped here: 0.37 was numbered
   above a `:0.36` tag judge0 once pinned, so the label never read as
   older than what was deployed).
