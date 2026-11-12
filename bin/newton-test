@@ -5,7 +5,7 @@
 # Runs a tiny "Hello, Newton!" program for every language and reports
 # PASS/FAIL. Designed to be run inside the built container:
 #
-#   docker run --rm -it newtonschool/judge0-newton-compiler:0.40-arm64 \
+#   docker run --rm -it newtonschool/judge0-newton-compiler:0.41-arm64 \
 #     bash /work/bin/newton-test
 #
 # Exits non-zero if any language fails, and prints a summary.
@@ -27,6 +27,8 @@
 # lane (judge0 id 3010) — fails, never skips, when the tools are missing.
 # 0.40: added CircuitRun ESP32-S3 + Arduino C++ coverage (judge0 id 3011) —
 # fails, never skips, when the Uno is present and the ESP32-S3 isn't.
+# 0.41: added a CircuitRun ESP32-S3 Wi-Fi join case (judge0 id 3011) that
+# also checks the run writes network.json.
 #
 set -u
 
@@ -572,9 +574,82 @@ EOF
         circuitrun-judge0-runner judge0-compile --board esp32-s3 --language arduino-cpp --source main.ino &&
         circuitrun-judge0-runner judge0-run --board esp32-s3 --language arduino-cpp --source main.ino --firmware build/firmware.bin --firmware-format bin --asset-dir artifacts < request.json
     " "CIRCUITRUN_EVALUATE_ACCEPTED"
+    # main.ino and request.json mirror judge0's SRC_ and STDIN_CIRCUITRUN_ESP32_S3_WIFI.
+    t "CircuitRun ESP32-S3 Wi-Fi join" circuitrun-esp32-s3-wifi "
+        cat > main.ino <<'EOF'
+#include <WiFi.h>
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(\"lab-ap\", \"secret123\");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(100);
+  }
+  Serial.print(\"IP \");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  delay(1000);
+}
+EOF
+        cat > request.json <<'EOF'
+{
+  \"schema_version\": \"2026-05-01\",
+  \"mode\": \"evaluate\",
+  \"embedded_system\": {
+    \"schema_version\": \"2026-05-01\",
+    \"parts\": [
+      {
+        \"id\": \"ap\",
+        \"model\": \"wifi-ap\",
+        \"attrs\": {
+          \"ssid\": \"lab-ap\",
+          \"password\": \"secret123\"
+        }
+      }
+    ],
+    \"nets\": []
+  },
+  \"scenario\": {
+    \"duration_ms\": 4000,
+    \"stimuli\": []
+  },
+  \"checks\": [
+    {
+      \"type\": \"wifi-connected\",
+      \"id\": \"joined\",
+      \"ssid\": \"lab-ap\",
+      \"ip\": \"192.168.4.100\",
+      \"before_ms\": 3000
+    },
+    {
+      \"type\": \"serial-contains\",
+      \"id\": \"prints-the-lease\",
+      \"port\": \"Serial\",
+      \"text\": \"IP 192.168.4.100\"
+    }
+  ],
+  \"artifacts\": {
+    \"enabled\": [\"result.json\", \"waveform.json\", \"serial.log\", \"network.json\"]
+  },
+  \"limits\": {
+    \"max_wall_ms\": 20000
+  },
+  \"context\": {
+    \"question_id\": \"compiler-image-smoke\",
+    \"test_case_id\": \"esp32-s3-wifi\"
+  }
+}
+EOF
+        circuitrun-judge0-runner judge0-compile --board esp32-s3 --language arduino-cpp --source main.ino &&
+        circuitrun-judge0-runner judge0-run --board esp32-s3 --language arduino-cpp --source main.ino --firmware build/firmware.bin --firmware-format bin --asset-dir artifacts < request.json &&
+        test -s artifacts/network.json
+    " "CIRCUITRUN_EVALUATE_ACCEPTED"
 else
     skip "CircuitRun Arduino Uno Arduino C++" "circuitrun-judge0-runner not installed"
     skip "CircuitRun ESP32-S3 Arduino C++" "circuitrun-judge0-runner not installed"
+    skip "CircuitRun ESP32-S3 Wi-Fi join" "circuitrun-judge0-runner not installed"
 fi
 
 # ────────────────────────────────────────────────────────────────────────

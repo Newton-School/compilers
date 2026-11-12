@@ -46,6 +46,17 @@
 #   3009 the new dist adds Servo.h, and a Submit whose trace passes its
 #   1024 KB file limit grades wrong_answer (output-too-large) instead of
 #   runtime_error.
+# - 0.41: repin CircuitRun dist to give the ESP32-S3 (judge0 id 3011)
+#   simulated Wi-Fi and BLE. A sketch that uses the radio links the dist's
+#   radio stub (keep and plain archives) in place of Espressif's closed
+#   Wi-Fi and BLE libraries. 3011's curated libraries gain the core's WiFi,
+#   Network, HTTPClient, WebServer, ESPmDNS, BLE, NetworkClientSecure, FS
+#   and Hash, PubSubClient 2.8 and ArduinoJson 7.4.3. A run can write a
+#   network.json asset. Soft-AP, ESP-NOW, TLS and the other calls the
+#   simulator doesn't model end the run as unsupported (a Runtime Error in
+#   Judge0). LED_BUILTIN is the on-board RGB LED; GPIO48 keeps only its pad
+#   level. For 3009 only the invalid part attrs message changes: it names
+#   its cause once.
 # - Newton extras kept: MARS (MIPS), nand2tetris-web-ide.
 #
 # Layer ordering: stable-on-top, volatile-on-bottom.
@@ -81,16 +92,16 @@
 #   # arm64 native dev path; uses the default multi-arch Docker Hub dist image digest.
 #   docker buildx build --platform linux/arm64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.40-arm64 \
+#     -t newtonschool/judge0-newton-compiler:0.41-arm64 \
 #     compilers
 #
 #   # amd64 production path; uses the default Docker Hub dist image digest.
 #   docker buildx build --platform linux/amd64 \
 #     -f compilers/NewtonDockerFiles/NewtonDockerfile-v2 \
-#     -t newtonschool/judge0-newton-compiler:0.40 \
+#     -t newtonschool/judge0-newton-compiler:0.41 \
 #     compilers
 #
-ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:29c4dd7a8462c5bc14c33ab2c2662c06f7b50ec63816dfc3a5d4f978200576eb
+ARG CIRCUITRUN_DIST_IMAGE=newtonschool/circuitrun-dist@sha256:60cc31f8109aab215e0bf766fb32d80a6ca8882eeba28f15611abb763dd7dd81
 FROM ${CIRCUITRUN_DIST_IMAGE} AS circuitrun_dist
 
 FROM buildpack-deps:bookworm AS base
@@ -575,6 +586,7 @@ ENV DOTNET_ROOT=/usr/local/dotnet-sdk \
 # patched QEMU, which links libgcrypt, glib, libseccomp and zlib from apt.
 # The dist trims the ESP32 Arduino core to the ESP32-S3's Xtensa toolchain
 # and libraries; the other ESP chips' toolchains are unused and large.
+# ArduinoJson is header-only, so the dist has no archive for it; Tier 13 checks its header.
 # ════════════════════════════════════════════════════════════════════════
 
 RUN --mount=from=circuitrun_dist,source=/opt/circuitrun/dist,target=/tmp/circuitrun-dist,readonly \
@@ -596,6 +608,12 @@ RUN --mount=from=circuitrun_dist,source=/opt/circuitrun/dist,target=/tmp/circuit
     test -f /usr/local/share/circuitrun/qemu/share/qemu/esp32s3_rev0_rom.bin && \
     test -f /usr/local/share/circuitrun/qemu/share/doc/qemu-source.tar.xz && \
     test -f /usr/local/share/circuitrun/arduino-prebuilt/esp32-s3/recipe.json && \
+    test -f /usr/local/share/circuitrun/arduino-prebuilt/esp32-s3/radio/plain/libcircuitrun_radio.a && \
+    test -f /usr/local/share/circuitrun/arduino-prebuilt/esp32-s3/radio/keep/libcircuitrun_radio.a && \
+    for lib in WiFi Network HTTPClient WebServer ESPmDNS BLE NetworkClientSecure FS Hash PubSubClient; do \
+      test -f "/usr/local/share/circuitrun/arduino-prebuilt/esp32-s3/lib${lib}.a" || exit 1; \
+    done && \
+    test -f /usr/local/share/circuitrun/esp32s3/Arduino/libraries/ArduinoJson/src/ArduinoJson.h && \
     test -f /usr/local/share/circuitrun/profile.json && \
     test -f /usr/local/share/circuitrun/arduino15/library_index.json && \
     test -f /usr/local/share/circuitrun/arduino15/package_index.json && \
@@ -714,4 +732,4 @@ ENV PATH="/usr/local/dotnet-sdk:/usr/local/openjdk-21/bin:/usr/local/bin:/usr/lo
 LABEL maintainer="Gaurav Kapatia <gkapatia@newtonschool.co>" \
       org.opencontainers.image.source="https://github.com/Newton-School/compilers" \
       org.opencontainers.image.description="Newton School Judge0 compilers image (v2, modernised, trimmed)" \
-      org.opencontainers.image.version="0.40"
+      org.opencontainers.image.version="0.41"

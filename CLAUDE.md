@@ -3,7 +3,7 @@
 Base Docker image that ships every language toolchain Judge0 executes
 student submissions in. Built downstream as `judge0/compilers:1.4.0` (the
 upstream artifact) and `newtonschool/judge0-newton-compiler:<git-sha>`
-(Newton's modernised + trimmed artifact, label `0.40`, which is what
+(Newton's modernised + trimmed artifact, label `0.41`, which is what
 `Newton-School/judge0` actually consumes, pinned by commit SHA).
 
 ## What's in the image
@@ -12,7 +12,8 @@ GCC 9.5 (C/C++), Java 21, Kotlin 2.3.21, Scala 3.8.3, Python 3.13 + 3.12 ML,
 Ruby 3.3.6, Node 22 + TypeScript, Go 1.23, Rust 1.83, R 4.5, Bash 5.2,
 NASM (amd64-only), FreeBASIC (amd64-only), SQLite, MARS, nand2tetris,
 Icarus Verilog 13.0, Mono 6.12 + .NET 7 + .NET 8 (C# lanes),
-CircuitRun Arduino Uno and ESP32-S3 Arduino C++ (patched Espressif QEMU),
+CircuitRun Arduino Uno and ESP32-S3 Arduino C++ (patched Espressif QEMU;
+the ESP32-S3 with simulated Wi-Fi and BLE),
 isolate v2,
 man-db (`man` for the Bash lane),
 flex 2.6 + bison 3.8 (`lex` / `yacc`, libfl + liby — compiler-design lab).
@@ -84,11 +85,22 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   (`/usr/local/share/circuitrun/qemu`), which links `libgcrypt20`,
   `libglib2.0-0`, `libseccomp2` and `zlib1g`; Tier 13 installs them
   (`apt-mark manual`'d) and checks that `qemu-system-xtensa --version`
-  runs. On arm64 the dist installs 823 MB under `/usr/local/share/circuitrun`
-  (about 260 MB gzipped with its `bin/circuitrun*`) against the Uno-only
-  dist's 347 MB. Tier 13 also asserts the ESP32 Arduino core holds only the
-  ESP32-S3's two tools dirs (`esp-x32`, `esp32s3-libs`) and that the
-  classic-ESP32 ESP-IDF and Pico SDK pieces are absent.
+  runs. On arm64 the 0.41 dist image is 840 MB (`docker image inspect`) and
+  258 MB as a gzipped `docker save`, against 0.40's 833 MB and 256 MB; the
+  Uno-only dist installed 347 MB. Tier 13 also asserts the ESP32 Arduino
+  core holds only the ESP32-S3's two tools dirs (`esp-x32`,
+  `esp32s3-libs`) and that the classic-ESP32 ESP-IDF and Pico SDK pieces
+  are absent. From 0.41 the
+  ESP32-S3 has simulated Wi-Fi and BLE: a sketch that uses the radio links
+  the dist's radio stub in place of Espressif's closed Wi-Fi and BLE
+  libraries, and a run can write a `network.json` asset. Tier 13 asserts
+  the stub's `radio/plain` and `radio/keep` archives
+  (`libcircuitrun_radio.a`) and the `lib<name>.a` archives of the core's
+  WiFi, Network, HTTPClient, WebServer, ESPmDNS, BLE, NetworkClientSecure,
+  FS and Hash and of PubSubClient 2.8, all under
+  `/usr/local/share/circuitrun/arduino-prebuilt/esp32-s3`. ArduinoJson
+  7.4.3 is header-only, so it has no archive and Tier 13 checks
+  `esp32s3/Arduino/libraries/ArduinoJson/src/ArduinoJson.h` instead.
 - **Tier 15 owns flex/bison/m4/libfl** (added in 0.39; liby too). It backs
   judge0 language id 3010 (C + Lex/Yacc, the compiler-design lab): apt
   `flex bison libfl-dev libbison-dev m4`, `apt-mark manual`'d. Tier 0 also
@@ -108,7 +120,7 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   `-lfl` so a lex+yacc program without its own `main()` gets liby's
   (calls `yyparse`) rather than libfl's (calls only `yylex`).
 
-See `git log` for the 0.26 → 0.40 trim/revive chronology if you need to know
+See `git log` for the 0.26 → 0.41 trim/revive chronology if you need to know
 when a particular toolchain came or went.
 
 ## Repo layout you will care about
@@ -120,7 +132,7 @@ when a particular toolchain came or went.
 │   ├── NewtonDockerfile-v1             # 0.25 production: layered on judge0/compilers:1.4.0
 │   └── NewtonDockerfile-v2             # 0.26+ production: standalone on bookworm — USE THIS
 ├── bin/
-│   ├── newton-test                     # 29-case smoke test (must pass before tagging)
+│   ├── newton-test                     # 30-case smoke test (must pass before tagging)
 │   ├── run-tests / debug-tests         # upstream tests, mostly unused
 ├── extra/                              # upstream "extra" flavour, ignored
 ├── slim/                               # upstream "slim" flavour, ignored
@@ -171,13 +183,13 @@ image (45+ min lost to this on the JDK pin in 0.26 — don't recreate it).
 # arm64 native (Mac dev) — ~2-2.5 hrs from scratch
 docker buildx build --platform linux/arm64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.40-arm64 \
+  -t newtonschool/judge0-newton-compiler:0.41-arm64 \
   --load .
 
 # amd64 (EC2 / prod) — ~45-75 min on a c6i.4xlarge
 docker buildx build --platform linux/amd64 \
   -f NewtonDockerFiles/NewtonDockerfile-v2 \
-  -t newtonschool/judge0-newton-compiler:0.40 \
+  -t newtonschool/judge0-newton-compiler:0.41 \
   --load .
 ```
 
@@ -190,12 +202,13 @@ drops.
 ```bash
 docker run --rm \
   -v "$PWD/bin:/work/bin:ro" \
-  newtonschool/judge0-newton-compiler:0.40-arm64 \
+  newtonschool/judge0-newton-compiler:0.41-arm64 \
   bash /work/bin/newton-test
 ```
 
-0.40 has 29 cases: C# lanes, CircuitRun Arduino Uno and ESP32-S3, `man`, plus
-two flex/bison cases (lex-only with `-lfl`; lex+yacc calculator with `-ly`).
+0.41 has 30 cases: C# lanes, CircuitRun Arduino Uno and ESP32-S3 (blink
+and Wi-Fi join), `man`, plus two flex/bison cases (lex-only with `-lfl`;
+lex+yacc calculator with `-ly`).
 NASM and FreeBASIC are amd64-only upstream and SKIP on arm64. The
 flex/bison cases have no presence guard on purpose — a missing `lex`,
 `yacc`, libfl or liby is a FAIL, never a SKIP (see pitfall #12).
@@ -207,19 +220,23 @@ both. The ESP32-S3 case's request mirrors judge0's `STDIN_CIRCUITRUN_ESP32_S3`
 and runs id 3011's two commands: `judge0-compile` writes
 `build/firmware.bin`, then `judge0-run` simulates it. It has no
 presence guard of its own, so an image with the Uno and without the
-ESP32-S3 FAILs. Both check for `CIRCUITRUN_EVALUATE_ACCEPTED` via `t`'s
+ESP32-S3 FAILs. The Wi-Fi join case's sketch and request mirror judge0's
+`SRC_CIRCUITRUN_ESP32_S3_WIFI` and `STDIN_CIRCUITRUN_ESP32_S3_WIFI`: it runs
+the same two commands, the sketch joins the request's `wifi-ap` part, and
+the case also fails if `judge0-run` leaves `artifacts/network.json` empty
+or missing. All three check for `CIRCUITRUN_EVALUATE_ACCEPTED` via `t`'s
 optional fourth argument (expected output; default `Hello, Newton!`).
 Counts:
 
-- native amd64 (prod): 29 / 0 / 0 expected. 0.39 (`f8f215e`) measured
+- native amd64 (prod): 30 / 0 / 0 expected. 0.39 (`f8f215e`) measured
   27 / 1 / 0 on the build box, the FAIL being CircuitRun's out-of-date
   `request.json`; that case now passes against the same image (below).
 - amd64 emulated on an Apple Silicon Mac: 27 / 1 / 0, measured on the
   published 0.39 image (`e7ffeab5…`). The FAIL is `C# (Mono legacy)`
   aborting in Mono's x86 codegen (`offset == (gint32)offset`), seen only
-  under emulation; Mono passes natively. 0.40 not measured.
-- arm64 native: 27 / 0 / 2 expected — not measured for 0.39 or 0.40 (no
-  arm64 image was built).
+  under emulation; Mono passes natively. 0.40 and 0.41 not measured.
+- arm64 native: 28 / 0 / 2 expected — not measured for 0.39, 0.40 or 0.41
+  (no arm64 image was built).
 
 Don't tag/push if anything fails (except the Mono abort when emulating).
 
@@ -288,10 +305,10 @@ Don't tag/push if anything fails (except the Mono abort when emulating).
   `judge0-newton-compiler:<git-sha>` and `:latest`. The `0.3x` numbering
   below is a documentation convention carried in the Dockerfile's
   `org.opencontainers.image.version` label — it is not what CI pushes.
-- Current label: **`0.40`** (CircuitRun ESP32-S3). Earlier: 0.25 → 0.39 in
-  this repo's history (0.35/0.36 were skipped here: 0.37 was numbered
-  above a `:0.36` tag judge0 once pinned, so the label never read as
-  older than what was deployed).
+- Current label: **`0.41`** (CircuitRun ESP32-S3 Wi-Fi and BLE). Earlier:
+  0.25 → 0.40 in this repo's history (0.35/0.36 were skipped here: 0.37 was
+  numbered above a `:0.36` tag judge0 once pinned, so the label never read
+  as older than what was deployed).
 - `Newton-School/judge0` pins this image by commit SHA in its
   `NewtonDockerfile` `FROM` line (e.g. `judge0-newton-compiler:f8f215e…`
   = label 0.39), so a label bump here changes nothing in prod until judge0
