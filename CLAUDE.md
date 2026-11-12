@@ -85,11 +85,12 @@ Plain text (judge0 id 43) needs no toolchain — handled judge0-side.
   (`/usr/local/share/circuitrun/qemu`), which links `libgcrypt20`,
   `libglib2.0-0`, `libseccomp2` and `zlib1g`; Tier 13 installs them
   (`apt-mark manual`'d) and checks that `qemu-system-xtensa --version`
-  runs. On arm64 the dist installs 823 MB under `/usr/local/share/circuitrun`
-  (about 260 MB gzipped with its `bin/circuitrun*`) against the Uno-only
-  dist's 347 MB. Tier 13 also asserts the ESP32 Arduino core holds only the
-  ESP32-S3's two tools dirs (`esp-x32`, `esp32s3-libs`) and that the
-  classic-ESP32 ESP-IDF and Pico SDK pieces are absent. From 0.41 the
+  runs. On arm64 the 0.41 dist image is 840 MB (`docker image inspect`) and
+  258 MB as a gzipped `docker save`, against 0.40's 833 MB and 256 MB; the
+  Uno-only dist installed 347 MB. Tier 13 also asserts the ESP32 Arduino
+  core holds only the ESP32-S3's two tools dirs (`esp-x32`,
+  `esp32s3-libs`) and that the classic-ESP32 ESP-IDF and Pico SDK pieces
+  are absent. From 0.41 the
   ESP32-S3 has simulated Wi-Fi and BLE: a sketch that uses the radio links
   the dist's radio stub in place of Espressif's closed Wi-Fi and BLE
   libraries, and a run can write a `network.json` asset. Tier 13 asserts
